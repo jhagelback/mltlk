@@ -71,6 +71,16 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             row = row[0]
         X.append(row)
         y.append(r[ycol])
+        
+    # Check if all yi is integer
+    y_tmp = [yi for yi in y if type(yi) in [float, np.float64]]
+    if len(y_tmp) == len(y):
+        y_tmp = [yi for yi in y_tmp if float(yi).is_integer()]
+        if len(y_tmp) == len(y):
+            # Convert to int
+            y = [int(yi) for yi in y]
+            
+    # Update session
     session["X_original"] = X
     session["y_original"] = y
     session["X"] = X.copy()
@@ -217,6 +227,14 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         error("Session is empty")
         return
     
+    # Set descriptions (if found)
+    if descriptions is not None:
+        if type(descriptions) == dict:
+            session["descriptions"] = descriptions
+        else:
+            warning("Invalid type for descriptions (expected " + colored("dict", "cyan") + ")")
+            descriptions = None
+    
     y = session["y"]
     cnt = Counter(y)
     tab = []
@@ -274,7 +292,11 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         r = []
         for j in range(0,3):
             if i < len(tab2[j]):
-                r.append(tab2[j][i][0])
+                if "label_encoder" in session:
+                    l = session["label_encoder"].inverse_transform([tab2[j][i][0]])[0]
+                    r.append(f"{l} ({tab2[j][i][0]})")
+                else:
+                    r.append(tab2[j][i][0])
                 r.append(tab2[j][i][1])
                 r.append(tab2[j][i][2])
                 r.append(tab2[j][i][3])
@@ -547,7 +569,11 @@ def evaluate_model(model, session, reload=False, conf={}):
             tmp.append([r[i]/sum(r),cat,sum(r),errs])
         tmp = sorted(tmp, reverse=True)
         # Show table
-        t = CustomizedTable(["Category", "Accuracy", "n"], style={"row-toggle-background": 0})
+        if "descriptions" not in session:
+            t = CustomizedTable(["Category", "Accuracy", "n"], style={"row-toggle-background": 0})
+        else:
+            t = CustomizedTable(["Category", "Accuracy", "n", "Description"], style={"row-toggle-background": 0})
+            t.column_style("Description", {"color": "#05760f"})
         t.column_style(0, {"color": "#048512"})
         t.column_style(1, {"color": "percent", "num-format": "pct-2"})
         t.column_style(2, {"color": "value"})
@@ -558,13 +584,29 @@ def evaluate_model(model, session, reload=False, conf={}):
         if "max_categories" in conf:
             maxcats = conf["max_categories"]
         for r in tmp[sidx:sidx+maxcats]:
-            t.add_row([r[1], float(r[0]), r[2]], style={"border": "top", "background": "#eee"})
+            cat = r[1]
+            if "label_encoder" in session:
+                l = session["label_encoder"].inverse_transform([cat])[0]
+                cat = f"{l} ({cat})"
+            row = [cat, float(r[0]), r[2]]
+            if "descriptions" in session:
+                row.append(session["descriptions"][r[1]])
+            t.add_row(row, style={"border": "top", "background": "#eee"})
             if len(r[3]) > 0:
                 errs = sorted(r[3], reverse=True)
                 if "max_errors" in conf:
                     errs = errs[:conf["max_errors"]]
                 for err in errs:
-                    t.add_row([f"&nbsp;&nbsp;{err[1]}", float(err[0]/r[2]), err[0]])
+                    ecat = err[1]
+                    if "label_encoder" in session:
+                        l = session["label_encoder"].inverse_transform([ecat])[0]
+                        ecat = f"{l} ({ecat})"
+                    erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0]]
+                    if "descriptions" in session:
+                        erow.append(session["descriptions"][err[1]])
+                    t.add_row(erow)
+                    if "descriptions" in session:
+                        t.cell_style(3,-1, {"color": "#fb6d6d"})
                     t.cell_style(0,-1, {"color": "#fd8e8a"})
                     t.cell_style([1,2],-1, {"color": "#aaa4fa"})
         print()
@@ -573,11 +615,16 @@ def evaluate_model(model, session, reload=False, conf={}):
     # Confusion matrix
     if "confusion_matrix" in conf and conf["confusion_matrix"]:
         print()
-        from sklearn.metrics import ConfusionMatrixDisplay
         norm = None
         if type(conf["confusion_matrix"]) == str:
             norm = conf["confusion_matrix"]
-        ConfusionMatrixDisplay.from_predictions(session["y_actual"], session["y_pred"], normalize=norm, xticks_rotation="vertical", cmap="inferno", values_format=".2f", colorbar=False)
+        labels = None
+        if "label_encoder" in session:
+            labels = []
+            for cat in cats:
+                l = session["label_encoder"].inverse_transform([cat])[0]
+                labels.append(f"{l} ({cat})")
+        ConfusionMatrixDisplay.from_predictions(session["y_actual"], session["y_pred"], normalize=norm, xticks_rotation="vertical", cmap="inferno", values_format=".2f", colorbar=False, display_labels=labels)
         plt.show()
     
     print()
@@ -758,24 +805,36 @@ def predict(xi, session):
         if "tf-idf" in session:
             X = session["tf-idf"].transform(X)
         pred = session["model"].predict(X)
-        info("Example is predicted as " + colored(pred[0], "green"))
+        res = pred[0]
+        if "label_encoder" in session:
+            res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+        info("Example is predicted as " + colored(res, "green"))
         return
     
     # Word2vec
     if type(xi) == str and session["preprocess"] in ["word2vec", "wordtovec"]:
         X = [word_vector(xi, session)]
         pred = session["model"].predict(X)
-        info("Example is predicted as " + colored(pred[0], "green"))
+        res = pred[0]
+        if "label_encoder" in session:
+            res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+        info("Example is predicted as " + colored(res, "green"))
         return
     
     # Numerical/ordinal data
     if "scaler" in session:
         X = session["scaler"].transform([xi])
         pred = session["model"].predict(X)
-        info("Example is predicted as " + colored(pred[0], "green"))
+        res = pred[0]
+        if "label_encoder" in session:
+            res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+        info("Example is predicted as " + colored(res, "green"))
         return
     
     # No pre-processing
     pred = session["model"].predict([xi])
-    info("Example is predicted as " + colored(pred[0], "green"))
+    res = pred[0]
+    if "label_encoder" in session:
+        res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+    info("Example is predicted as " + colored(res, "green"))
     
