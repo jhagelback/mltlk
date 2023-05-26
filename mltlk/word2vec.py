@@ -1,5 +1,6 @@
 # Basic stuff
 from termcolor import colored
+from .utils import *
 import time
 # Pre-processing
 from nltk.corpus import stopwords
@@ -10,27 +11,6 @@ from pickle import dump,load
 from os.path import exists
 from os import mkdir
 import gzip
-
-
-#
-# Error message
-#
-def error(e):
-    print(colored("Error: ", "red", attrs=["bold"]) + e)
-
-    
-#
-# Warning message
-#
-def warning(e):
-    print(colored("Warning: ", "red", attrs=["bold"]) + e)
-    
-
-#
-# Info message
-#
-def info(e):
-    print(colored("Info: ", "yellow", attrs=["bold"]) + e)
 
 
 #
@@ -64,6 +44,8 @@ def load_word2vec_model(session, conf, verbose=1):
     # Stopwords
     if "stopwords" in conf:
         stpwrds = set(stopwords.words(conf["stopwords"]))
+        if verbose >= 1:
+            info("Used stopwords " + colored(conf["stopwords"], "cyan"))
     
     # Convert to list of list of words
     X = []
@@ -165,3 +147,27 @@ def load_word2vec_data(session, conf, verbose=1):
     dump([X,y], gzip.open(f"word2vec/{fname}", "wb"))
     if verbose >= 1:
         info("Word2vec embeddings stored to " + colored(f"word2vec/{fname}", "cyan"))
+
+        
+#
+# Create word vector for example
+#
+def word_vector(xi, session):
+    # Get vector size
+    if type(session["X"][0]) == list:
+        size = len(session["X"][0])
+    else:
+        size = session["X"][0].shape[1]
+        
+    # Get Word2Vec model
+    wtovec = load_word2vec_model(session, {"w2v_vector_size": size}, verbose=0)
+        
+    # Generate new word vectors
+    vec = [0] * size
+    for w in xi.lower().split(" "):
+        # Add vectors for each word
+        if w.strip() != "":
+            if w in wtovec:
+                vec = [x1+x2 for x1,x2 in zip(vec,wtovec[w])]
+    return vec
+    

@@ -7,18 +7,22 @@ from customized_table import *
 import time
 import matplotlib.pyplot as plt
 import re
+from .utils import *
 # Pre-processing
 from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.model_selection import train_test_split
 from nltk.corpus import stopwords
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import Normalizer
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.preprocessing import OrdinalEncoder
 # Classifiers
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.svm import LinearSVC
 from sklearn.neural_network import MLPClassifier
 from sklearn.ensemble import RandomForestClassifier
 # Evaluation
-from sklearn.model_selection import cross_val_predict
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, confusion_matrix, ConfusionMatrixDisplay
 # File stuff
 from pickle import dump,load
@@ -31,35 +35,29 @@ from .word2vec import *
 
 
 #
-# Error message
-#
-def error(e):
-    print(colored("Error: ", "red", attrs=["bold"]) + e)
-
-    
-#
-# Warning message
-#
-def warning(e):
-    print(colored("Warning: ", "red", attrs=["bold"]) + e)
-    
-
-#
-# Info message
-#
-def info(e):
-    print(colored("Info: ", "yellow", attrs=["bold"]) + e)
-
-
-#
 # Load and pre-process data
 #
-def load_data(file, Xcols=[0], ycol=1, verbose=1, conf={}):
+def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     session = {}
     
+    # Check config
+    if "preprocess" not in conf:
+        conf["preprocess"] = ""
+    conf["preprocess"] = conf["preprocess"].lower()
+    
     # Load data
+    if not exists(file):
+        error("data file " + colored(file, "cyan") + " not found")
+        return None
     data = pd.read_csv(file).values
     session["file"] = file
+    
+    # Set X features to be all but last column
+    if Xcols is None:
+        Xcols = range(0,len(data[0]) - 1)
+    # Set y to be last column
+    if ycol is None:
+        ycol = len(data[0]) - 1
     
     # Convert to X and y
     X = []
@@ -101,39 +99,58 @@ def load_data(file, Xcols=[0], ycol=1, verbose=1, conf={}):
                     s += li + ", "
             if s != "":
                 info("Removed minority categories " + colored(s[:-2], "cyan"))
-                
-    # Clean inputs
-    if "clean_text" in conf:
-        if conf["clean_text"] == 2 or conf["clean_text"] == "digits":
-            info("Clean texts keeping letters and digits")
-        else:
-            info("Clean texts keeping letters only")    
-        for i,xi in enumerate(session["X"]):
-            # Remove new line and whitespaces
-            xi = xi.replace("<br>", " ")
-            xi = xi.replace("&nbsp;", " ")
-            # Remove special chars
-            if conf["clean_text"] == 2 or conf["clean_text"] == "digits":
-                xi = re.sub("[^a-zA-Z0-9åäöÅÄÖ ]", " ", xi)
-            else:
-                xi = re.sub("[^a-zA-ZåäöÅÄÖ ]", " ", xi)
-            # Remove multiple whitespaces
-            xi = " ".join(xi.split())
-            # Set to lower case
-            xi = xi.lower()
-            # Strip trailing/leading whitespaces
-            xi = xi.strip()
-            session["X"][i] = xi
-            
+    
     # Encode labels
     if "encode_labels" in conf and conf["encode_labels"]:
         session["label_encoder"] = LabelEncoder().fit(session["y"])
         session["y"] = session["label_encoder"].transform(session["y"])
         if verbose >= 1:
             info("Labels encoded")
+            
+    # Check text inputs without text preprocessing
+    if conf["preprocess"] not in ["bag-of-words", "bow", "wordtovec", "word2vec"]:
+        if type(X[0]) == str:
+            error("Input seems to be text but no text-preprocessing is set")
+            return None
+        
+    # Check ordinal features without encoding
+    if conf["preprocess"] not in ["one-hot", "onehot", "one hot", "ordinal"]:
+        if type(X[0]) != str:
+            for xi in X[0]:
+                if type(xi) == str:
+                    error("Input contains ordinal features but no encoding is set (use " + colored("one-hot", "blue") + " or " + colored("ordinal", "blue") + ")")
+                    return None
+    
+    # Clean text inputs
+    if "clean_text" in conf and conf["preprocess"] in ["word2vec", "bag-of-words", "bow"]:
+        clean = True
+        if conf["clean_text"] in [2, "letters digits", "digits letters"]:
+            info("Clean texts keeping letters and digits")
+        elif conf["clean_text"] in [1, "letters"]:
+            info("Clean texts keeping letters only")
+        else:
+            warning("Invalid clean text mode " + colored(conf["clean_text"], "cyan"))
+            clean = False
+        if clean:
+            for i,xi in enumerate(session["X"]):
+                # Remove new line and whitespaces
+                xi = xi.replace("<br>", " ")
+                xi = xi.replace("&nbsp;", " ")
+                # Remove special chars
+                if conf["clean_text"] in [2, "letters digits", "digits letters"]:
+                    xi = re.sub("[^a-zA-Z0-9åäöÅÄÖ ]", " ", xi)
+                else:
+                    xi = re.sub("[^a-zA-ZåäöÅÄÖ ]", " ", xi)
+                # Remove multiple whitespaces
+                xi = " ".join(xi.split())
+                # Set to lower case
+                xi = xi.lower()
+                # Strip trailing/leading whitespaces
+                xi = xi.strip()
+                session["X"][i] = xi
     
     # Bag-of-words representation for input texts
-    if "bag-of-words" in conf and conf["bag-of-words"]:
+    if conf["preprocess"] in ["bag-of-words", "bow"]:
         if "stopwords" in conf:
             sw = list(stopwords.words(conf["stopwords"]))
             if verbose >= 1:
@@ -152,8 +169,39 @@ def load_data(file, Xcols=[0], ycol=1, verbose=1, conf={}):
             if verbose >= 1:
                 info("Used TF-IDF")
     # Word2vec
-    if "word2vec" in conf and conf["word2vec"]:
+    if conf["preprocess"] in ["word2vec", "wordtovec"]:
         load_word2vec_data(session, conf, verbose=verbose)
+        
+    # One-hot encoding
+    if conf["preprocess"] in ["one-hot", "onehot", "one hot"]:
+        session["scaler"] = OneHotEncoder(handle_unknown="ignore").fit(session["X"])
+        session["X"] = session["scaler"].transform(session["X"])
+        if verbose >= 1:
+            info("Transformed input data using one-hot encoding")
+            
+    # Ordinal encoding
+    if conf["preprocess"] in ["ordinal"]:
+        session["scaler"] = OrdinalEncoder().fit(session["X"])
+        session["X"] = session["scaler"].transform(session["X"])
+        if verbose >= 1:
+            info("Transformed input data using ordinal encoding")
+        
+    # Standard scaler
+    if conf["preprocess"] == "scale":
+        session["scaler"] = StandardScaler().fit(session["X"])
+        session["X"] = session["scaler"].transform(session["X"])
+        if verbose >= 1:
+            info("Scaled input data using standard scaler")
+            
+    # Normalize
+    if conf["preprocess"] == "normalize":
+        session["scaler"] = Normalizer().fit(session["X"])
+        session["X"] = session["scaler"].transform(session["X"])
+        if verbose >= 1:
+            info("Normalized input data")
+            
+    # Set mode in session
+    session["preprocess"] = conf["preprocess"]
         
     if verbose >= 1:
         info("Loaded " + colored(f"{len(session['y'])}", "blue") + " examples in " + colored(f"{len(Counter(session['y']))}", "blue") + " categories")
@@ -165,6 +213,10 @@ def load_data(file, Xcols=[0], ycol=1, verbose=1, conf={}):
 # Show data stats
 #
 def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
+    if session is None:
+        error("Session is empty")
+        return
+    
     y = session["y"]
     cnt = Counter(y)
     tab = []
@@ -206,14 +258,14 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
     
     # Show table
     if descriptions is not None:
-        t = CustomizedTable(["Acc", "No", "%", "Σ%", "Description", "Acc", "No", "%", "Σ%", "Description", "Acc", "No", "%", "Σ%", "Description"])
+        t = CustomizedTable(["Category", "No", "%", "Σ%", "Description", "Category", "No", "%", "Σ%", "Description", "Category", "No", "%", "Σ%", "Description"])
         t.column_style([0,5,10], {"color": "id"})
         t.column_style([1,6,11], {"color": "value"})
         t.column_style([2,7,12], {"color": "percent"})
         t.column_style([3,8,13], {"color": "green"})
         t.column_style([4,9,14], {"color": "name"})
     else:
-        t = CustomizedTable(["Acc", "No", "%", "Σ%", "Acc", "No", "%", "Σ%", "Acc", "No", "%", "Σ%"])
+        t = CustomizedTable(["Category", "No", "%", "Σ%", "Category", "No", "%", "Σ%", "Category", "No", "%", "Σ%"])
         t.column_style([0,4,8], {"color": "id"})
         t.column_style([1,5,9], {"color": "value"})
         t.column_style([2,6,10], {"color": "percent"})
@@ -236,9 +288,22 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         if descriptions is None:
             rsize = 12
         if len(r) < rsize:
-            for i in range(rsize - len(r)):
-                r.append("")
+            i = rsize - len(r)
+            r += [""] * (i)
         t.add_row(r)
+    
+    # Overall stats
+    if type(session["X"]) == list:
+        fts = len(session["X"][0])
+    else:
+        fts = session["X"].shape[1]
+    if descriptions is not None:
+        t.add_row(["Examples:", len(session["y"]), "", "", "", "Features:", fts, "", "", "", "Categories:", len(cnt), "", "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
+        t.cell_style([0,5,10], -1, {"font": "bold"})
+    else:
+        t.add_row(["Examples:", len(session["y"]), "", "", "Features:", fts, "", "", "Categories:", len(cnt), "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
+        t.cell_style([0,4,8], -1, {"font": "bold"})
+    
     t.display()
 
 
@@ -246,11 +311,19 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
 # Split data into train and test sets
 #
 def split_data(session, verbose=1, conf={}):
-    # Test size
-    test_size = 0.15
+    if session is None:
+        error("Session is empty")
+        return
+    
+    # Check test size
     if "test_size" in conf:
         test_size = conf["test_size"]
-    s = "Split data using " + colored(f"{(1-test_size)*100:.0f}%", "blue") + " training data and " + colored(f"{(test_size)*100:.0f}%", "blue") + " test data"
+    else:
+        conf["test_size"] = 0.2
+        warning(colored("test_size", "cyan") + " not set (using " + colored("0.2", "blue") + ")")
+        
+    # Info string
+    s = "Split data using " + colored(f"{(1-conf['test_size'])*100:.0f}%", "blue") + " training data and " + colored(f"{(conf['test_size'])*100:.0f}%", "blue") + " test data"
     
     # Random seed
     seed = None
@@ -265,13 +338,16 @@ def split_data(session, verbose=1, conf={}):
         s += " and stratify"
     
     # Split data
-    X_train, X_test, y_train, y_test = train_test_split(session["X"], session["y"], test_size=test_size, random_state=seed, stratify=stratify)
+    X_train, X_test, y_train, y_test = train_test_split(session["X"], session["y"], test_size=conf["test_size"], random_state=seed, stratify=stratify)
     
     # Update session
     session["X_train"] = X_train
     session["X_test"] = X_test
     session["y_train"] = y_train
     session["y_test"] = y_test
+    if "mode" in session:
+        # Trigger reload
+        session["mode"] = ""
     
     if verbose >= 1:
         info(s)
@@ -281,6 +357,10 @@ def split_data(session, verbose=1, conf={}):
 # Sets resampling method to use
 #
 def set_resample(session, conf={}):
+    if session is None:
+        error("Session is empty")
+        return
+    
     # Check mode parameter
     if "mode" not in conf:
         error("Missing parameter " + colored("mode", "cyan"))
@@ -351,6 +431,15 @@ def set_resample(session, conf={}):
 # Builds and evaluates model
 #
 def evaluate_model(model, session, reload=False, conf={}):
+    if session is None:
+        error("Session is empty")
+        return
+    
+    # Check mode param
+    if "mode" not in conf:
+        conf["mode"] = "all"
+        warning(colored("mode", "cyan") + " not set (using " + colored("all", "blue") + ")")
+        
     # Check if rebuild model
     if "mode" in conf and "mode" in session and conf["mode"] != session["mode"]:
         reload = True
@@ -359,7 +448,7 @@ def evaluate_model(model, session, reload=False, conf={}):
     
     # Build model and predict data (if not already built)
     if "y_pred" not in session or reload:
-        if "mode" in conf and (conf["mode"].startswith("CV") or conf["mode"].startswith("cv")):
+        if conf["mode"].lower().startswith("cv"):
             st = time.time()
             cv = 5
             if len(conf["mode"]) > 2:
@@ -403,8 +492,8 @@ def evaluate_model(model, session, reload=False, conf={}):
             session["y_actual"] = y_actual
             
             en = time.time()
-            print(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.4f}", "blue") + " sec")
-        elif "mode" in conf and (conf["mode"] == "train-test" or conf["mode"] == "split"):
+            print(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
+        elif conf["mode"].lower() in ["train-test", "split"]:
             st = time.time()
             if "X_train" not in session or "y_train" not in session:
                 error("Data must be split using function " + colored("split_data()", "cyan") + " before evaluating model using train-test split")
@@ -417,21 +506,24 @@ def evaluate_model(model, session, reload=False, conf={}):
             session["y_pred"] = model.predict(session["X_test"])
             session["y_actual"] = session["y_test"]
             en = time.time()
-            print("Building and evaluating model using train-test split took " + colored(f"{en-st:.4f}", "blue") + " sec")
-        else:
+            print("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
+        elif conf["mode"].lower() in ["all", ""]:
             st = time.time()
             model.fit(session["X"], session["y"])
             session["y_pred"] = model.predict(session["X"])
             session["y_actual"] = session["y"]
             en = time.time()
-            print("Building and evaluating model on all data took " + colored(f"{en-st:.4f}", "blue") + " sec")
+            print("Building and evaluating model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
             conf["mode"] = "all"
+        else:
+            warning("Invalid mode " + colored(conf["mode"], "cyan"))
+            return
             
         session["mode"] = conf["mode"]
         session["modelid"] = str(model)
     
     # Results
-    t = CustomizedTable(["", ""])
+    t = CustomizedTable(["Results", ""])
     t.column_style(1, {"color": "percent", "num-format": "pct-2"})
     t.add_row(["Accuracy:", float(accuracy_score(session["y_actual"], session["y_pred"]))])
     t.add_row(["F1-score:", float(f1_score(session["y_actual"], session["y_pred"], average="weighted"))])
@@ -472,7 +564,7 @@ def evaluate_model(model, session, reload=False, conf={}):
                 if "max_errors" in conf:
                     errs = errs[:conf["max_errors"]]
                 for err in errs:
-                    t.add_row(["&nbsp;&nbsp;" + err[1], float(err[0]/r[2]), err[0]])
+                    t.add_row([f"&nbsp;&nbsp;{err[1]}", float(err[0]/r[2]), err[0]])
                     t.cell_style(0,-1, {"color": "#fd8e8a"})
                     t.cell_style([1,2],-1, {"color": "#aaa4fa"})
         print()
@@ -495,32 +587,43 @@ def evaluate_model(model, session, reload=False, conf={}):
 # Builds final model
 #
 def build_model(model, session, conf={}):
-    if "mode" in conf and (conf["mode"] == "train-test" or conf["mode"] == "split"):
+    if session is None:
+        error("Session is empty")
+        return
+    if "mode" not in conf:
+        conf["mode"] = "all"
+    
+    if conf["mode"] in ["train-test", "split"]:
         st = time.time()
         model.fit(session["X_train"], session["y_train"])
         session["model"] = model
         en = time.time()
-        print("Building final model on training data took " + colored(f"{en-st:.4f}", "cyan") + " sec")
-    else:
+        info("Building final model on training data took " + colored(f"{en-st:.2f}", "cyan") + " sec")
+    elif conf["mode"] in ["all", ""]:
         st = time.time()
         model.fit(session["X"], session["y"])
         session["model"] = model
         en = time.time()
-        print("Building final model on all data took " + colored(f"{en-st:.4f}", "cyan") + " sec")
+        info("Building final model on all data took " + colored(f"{en-st:.2f}", "cyan") + " sec")
+    else:
+        error("Invalid mode " + colored(conf["mode"], "cyan"))
 
 
 #
 # Save session to file
 #
-def save_session(session, file, verbose=1):
+def save_session(session, id, verbose=1):
+    if session is None:
+        error("Session is empty")
+        return
+    
     # Check if path exists
-    if "/" in file:
-        path = file[:file.rfind("/")]
-        if not exists(path):
-            makedirs(path)
-    if not file.endswith(".gz"):
-        file += ".gz"
+    fpath = "sessions"
+    if not exists(fpath):
+        mkdir(fpath)
+    
     # Dump to file
+    file = f"sessions/{id}.gz"
     dump(session, gzip.open(file, "wb"))
     if verbose >= 1:
         info("Session saved to " + colored(file, "blue"))
@@ -529,7 +632,8 @@ def save_session(session, file, verbose=1):
 #
 # Load session from file
 #
-def load_session(file, verbose=1):
+def load_session(id, verbose=1):
+    file = f"sessions/{id}.gz"
     if not exists(file) and not file.endswith(".gz"):
         file += ".gz"
     if not exists(file):
@@ -546,9 +650,14 @@ def load_session(file, verbose=1):
 # Dump n prediction errors
 #
 def prediction_errors_for_category(session, category, predicted_category=None, sidx=0, n=5):
+    if session is None:
+        error("Session is empty")
+        return
+    
     # Check if model has been built
     if "model" not in session:
         error("Final model has not been built. Use the function " + colored("build_model()", "cyan"))
+        return
     
     # Find n errors
     ht = f"Actual: <id>{category}</>"
@@ -574,9 +683,14 @@ def prediction_errors_for_category(session, category, predicted_category=None, s
 # Check actual categories for prediction errors where predicted category is specified as param
 #
 def errors_for_predicted_category(session, category, n=None):
+    if session is None:
+        error("Session is empty")
+        return
+    
     # Check if model has been built
     if "model" not in session:
         error("Final model has not been built. Use the function " + colored("build_model()", "cyan"))
+        return
     
     # Get test data
     y_preds = session["model"].predict(session["X_test"])
@@ -618,3 +732,50 @@ def errors_for_predicted_category(session, category, n=None):
     t.cell_style(0, -1, {"font": "bold"})
     t.cell_style(1, -1, {"color": "value"})
     t.display()
+    
+    
+#
+# Predict example
+#
+def predict(xi, session):
+    if session is None:
+        error("Session is empty")
+        return
+    
+    # Check if model has been built
+    if "model" not in session:
+        error("Final model has not been built. Use the function " + colored("build_model()", "cyan"))
+        return
+    
+    # Error checks
+    if type(xi) == str and session["preprocess"] not in ["bag-of-words", "bow", "word2vec", "wordtovec"]:
+        error("Example is text but no text preprocessing is specified")
+        return
+    
+    # Bag of words
+    if type(xi) == str and session["preprocess"] in ["bag-of-words", "bow"]:
+        X = session["bow"].transform([xi])
+        if "tf-idf" in session:
+            X = session["tf-idf"].transform(X)
+        pred = session["model"].predict(X)
+        info("Example is predicted as " + colored(pred[0], "green"))
+        return
+    
+    # Word2vec
+    if type(xi) == str and session["preprocess"] in ["word2vec", "wordtovec"]:
+        X = [word_vector(xi, session)]
+        pred = session["model"].predict(X)
+        info("Example is predicted as " + colored(pred[0], "green"))
+        return
+    
+    # Numerical/ordinal data
+    if "scaler" in session:
+        X = session["scaler"].transform([xi])
+        pred = session["model"].predict(X)
+        info("Example is predicted as " + colored(pred[0], "green"))
+        return
+    
+    # No pre-processing
+    pred = session["model"].predict([xi])
+    info("Example is predicted as " + colored(pred[0], "green"))
+    

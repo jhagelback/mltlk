@@ -1,30 +1,12 @@
+# Basic stuff
 from termcolor import colored
+from .utils import *
 from collections import Counter
+# Imbalanced-learn
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
-
-
-#
-# Error message
-#
-def error(e):
-    print(colored("Error: ", "red", attrs=["bold"]) + e)
-
-    
-#
-# Warning message
-#
-def warning(e):
-    print(colored("Warning: ", "red", attrs=["bold"]) + e)
-    
-
-#
-# Info message
-#
-def info(e):
-    print(colored("Info: ", "yellow", attrs=["bold"]) + e)
-    
+  
     
 #
 # Random undersampling
