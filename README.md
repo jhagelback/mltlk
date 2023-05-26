@@ -4,6 +4,7 @@ It wraps the functionality in Scikit-learn and other useful packages into simple
 
 ## Install
 Install with:
+
 <code>pip install mltlk</code>
 
 ## How to use
