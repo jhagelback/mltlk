@@ -1,0 +1,10 @@
+.DS_Store
+build/
+dist/
+*.egg-info/
+old/
+sessions/
+word2vec/
+.ipynb_checkpoints/
+__pychache__/
+
