@@ -2,8 +2,6 @@
 from termcolor import colored
 from .utils import *
 import time
-# Pre-processing
-from nltk.corpus import stopwords
 # Word2Vec
 from gensim.models import Word2Vec
 # File stuff
@@ -42,17 +40,18 @@ def load_word2vec_model(session, conf, verbose=1):
         return wtovec
     
     # Stopwords
-    if "stopwords" in conf:
-        stpwrds = set(stopwords.words(conf["stopwords"]))
-        if verbose >= 1:
-            info("Used stopwords " + colored(conf["stopwords"], "cyan"))
+    sw = load_stopwords(conf, verbose=verbose)
+    if sw is None:
+        sw = set()
+    else:
+        sw = set(sw)
     
     # Convert to list of list of words
     X = []
     for wds in session["X"]:
         xi = []
         for w in wds.split(" "):
-            if w not in stpwrds and w.strip() != "":
+            if w not in sw and w.strip() != "":
                 xi.append(w)
         X.append(xi)
         

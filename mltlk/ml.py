@@ -12,7 +12,6 @@ from .utils import *
 from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.model_selection import train_test_split
-from nltk.corpus import stopwords
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import Normalizer
 from sklearn.preprocessing import OneHotEncoder
@@ -161,14 +160,12 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     
     # Bag-of-words representation for input texts
     if conf["preprocess"] in ["bag-of-words", "bow"]:
+        sw = load_stopwords(conf, verbose=verbose)
+        l = "Used bag-of-words"
         if "stopwords" in conf:
-            sw = list(stopwords.words(conf["stopwords"]))
-            if verbose >= 1:
-                info("Used bag-of-words with stopwords " + colored(conf["stopwords"], "cyan") + " removed")
-        else:
-            sw = None
-            if verbose >= 1:
-                info("Used bag-of-words")
+            l += " with stopwords removed"
+        elif verbose >= 1:
+            l = "Used bag-of-words"
         session["bow"] = CountVectorizer(stop_words=sw).fit(session["X"]) #todo: max_features=max_words, ngram_range=ngram)
         session["X"] = session["bow"].transform(session["X"])
     
@@ -176,8 +173,9 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         if "TF-IDF" in conf and conf["TF-IDF"] or "tf-idf" in conf and conf["tf-idf"]:
             session["TF-IDF"] = TfidfTransformer().fit(session["X"])
             session["X"] = session["TF-IDF"].transform(session["X"])
-            if verbose >= 1:
-                info("Used TF-IDF")
+            l += " and TF-IDF"
+        if verbose >= 1:
+            info(l)
     # Word2vec
     if conf["preprocess"] in ["word2vec", "wordtovec"]:
         load_word2vec_data(session, conf, verbose=verbose)
@@ -645,13 +643,13 @@ def build_model(model, session, conf={}):
         model.fit(session["X_train"], session["y_train"])
         session["model"] = model
         en = time.time()
-        info("Building final model on training data took " + colored(f"{en-st:.2f}", "cyan") + " sec")
+        info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec")
     elif conf["mode"] in ["all", ""]:
         st = time.time()
         model.fit(session["X"], session["y"])
         session["model"] = model
         en = time.time()
-        info("Building final model on all data took " + colored(f"{en-st:.2f}", "cyan") + " sec")
+        info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
     else:
         error("Invalid mode " + colored(conf["mode"], "cyan"))
 
@@ -669,11 +667,14 @@ def save_session(session, id, verbose=1):
     if not exists(fpath):
         mkdir(fpath)
     
+    # Date-time
+    session["created"] = timestamp_to_str(None)
+    
     # Dump to file
     file = f"sessions/{id}.gz"
     dump(session, gzip.open(file, "wb"))
     if verbose >= 1:
-        info("Session saved to " + colored(file, "blue"))
+        info("Session saved to " + colored(file, "cyan"))
 
 
 #
@@ -689,7 +690,7 @@ def load_session(id, verbose=1):
     # Load file
     s = load(gzip.open(file, "rb"))
     if verbose >= 1:
-        info("Session loaded from " + colored(file, "blue"))
+        info("Session loaded from " + colored(file, "cyan") + " (created at " + colored(s["created"], "blue") + " from file " + colored(s["file"], "cyan") + ")")
     return s
 
 
