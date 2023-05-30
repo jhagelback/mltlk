@@ -207,8 +207,10 @@ def overlap_all_categories(corpus, n=10, sidx=0, similarity="jaccard"):
                 # Check similarity to use
                 if similarity in [2, "oc", "overlap coefficient", "overlap"]:
                     tab.append([cat1, res[2], cat2, res[3], res[1]])
+                    lbl = "(Overlap Coefficient)"
                 elif similarity in [1, "ji", "jaccard similarity", "jaccard"]:
                     tab.append([cat1, res[2], cat2, res[3], res[0]])
+                    lbl = "(Jaccard Similarity)"
                 else:
                     error("Unknown similarity " + colored(similarity, "cyan"))
                     return
@@ -219,7 +221,7 @@ def overlap_all_categories(corpus, n=10, sidx=0, similarity="jaccard"):
     if sidx < 0:
         si = len(tab) + sidx
     
-    t = CustomizedTable(["", "Category 1", "Words", "Category 2", "Words", "Overlap"])
+    t = CustomizedTable(["", "Category 1", "Words", "Category 2", "Words", f"Overlap<br><font style='font-weight: normal'>{lbl}</font>"])
     t.column_style(0, {"color": "size"})
     t.column_style([1, 3], {"color": "name"})
     t.column_style([2, 4], {"color": "value"})
