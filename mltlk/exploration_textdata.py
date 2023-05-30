@@ -9,7 +9,9 @@ from .utils import *
 
 # Caches to speed up processing
 cache_topcats = {}
-cache_overlap = {}
+cache_overlap_js = {}
+cache_overlap_oc = {}
+
 
 #
 # Builds a corpus from text data
@@ -166,8 +168,10 @@ def overlap(corpus, cat1, cat2):
     t.cell_style(0, -1, {"color": "name"})
     t.add_row([cat2, len(wrds2), corpus["documents_per_category"][cat2]])
     t.cell_style(0, -1, {"color": "name"})
-    t.add_row(["Both:", len(tot), corpus["documents_per_category"][cat1]+corpus["documents_per_category"][cat2]], style={"border": "top"})
-    t.add_row(["Overlap:", f"{len(overlap)}&nbsp;&nbsp;&nbsp;{len(overlap)/len(tot)*100:.2f}%", ""])
+    t.add_row(["Total words:", len(tot), ""], style={"border": "top"})
+    t.add_row(["Overlap:", len(overlap), ""])
+    t.add_row(["Overlap (Jaccard Similarity):", f"{len(overlap)/len(tot)*100:.2f}%", ""])
+    t.add_row(["Overlap (Overlap Coefficient):", f"{len(overlap)/min(len(wrds1),len(wrds2))*100:.2f}%", ""])
     print()
     t.display()
     print()
@@ -176,41 +180,55 @@ def overlap(corpus, cat1, cat2):
 #
 # Check overlapping words between all categories
 #
-def overlap_all_categories(corpus, n=10, sidx=0):
-    global cache_overlap
-    done = set()
+def overlap_all_categories(corpus, n=10, sidx=0, similarity="jaccard"):
+    global cache_overlap_js, cache_overlap_oc
+    similarity = similarity.lower()
+    
+    # Check all combinations of categories
+    cats = sorted(corpus["categories"])
     tab = []
-    for cat1 in corpus["categories"]:
-        for cat2 in corpus["categories"]:
-            key1 = f"{cat1}-{cat2}"
-            key2 = f"{cat2}-{cat1}"
-            if key1 not in done and key2 not in done and key1 != key2:
-                if key1 in cache_overlap:
-                    pct = cache_overlap[key1]
-                elif key2 in cache_overlap:
-                    pct = cache_overlap[key2]
+    for i in range(0,len(cats)):
+        for j in range(i,len(cats)):
+            if i != j:
+                cat1 = cats[i]
+                cat2 = cats[j]
+                key = f"{cat1}-{cat2}"
+                
+                # Calculate similarity
+                if key in cache_overlap_js and key in cache_overlap_oc:
+                    res_js = cache_overlap_js[key]
+                    res_oc = cache_overlap_oc[key]
                 else:
                     wrds1 = set(corpus["words_per_category"][cat1])
                     wrds2 = set(corpus["words_per_category"][cat2])
                     tot = wrds1.union(wrds2)
                     overlap = wrds1.intersection(wrds2)
-                    pct = len(overlap)/len(tot)
-                    cache_overlap[key1] = pct
-                    cache_overlap[key2] = pct
-                done.add(key1)
-                done.add(key2)
-                tab.append([cat1, cat2, pct])
-    tab = sorted(tab, key=lambda x: x[2], reverse=True)
+                    res_js = [len(overlap)/len(tot), len(wrds1), len(wrds2)]
+                    res_oc = [len(overlap)/min(len(wrds2),len(wrds2)), len(wrds1), len(wrds2)]
+                    cache_overlap_js[key] = res_js
+                    cache_overlap_oc[key] = res_oc
+            
+                # Check similarity to use
+                if similarity in [2, "oc", "overlap coefficient", "overlap"]:
+                    res = res_oc
+                elif similarity in [1, "ji", "jaccard similarity", "jaccard"]:
+                    res = res_js
+                else:
+                    error("Unknown similarity " + colored(similarity, "cyan"))
+                    return
+                tab.append([cat1, res[1], cat2, res[2], res[0]])
+    tab = sorted(tab, key=lambda x: x[4], reverse=True)
     
     # Start and end index
     si = sidx
     if sidx < 0:
         si = len(tab) + sidx
     
-    t = CustomizedTable(["", "Category 1", "Category 2", "Overlap"])
+    t = CustomizedTable(["", "Category 1", "Words", "Category 2", "Words", "Overlap"])
     t.column_style(0, {"color": "size"})
-    t.column_style([1, 2], {"color": "name"})
-    t.column_style(3, {"color": "percent", "num-format": "pct-2"})
+    t.column_style([1, 3], {"color": "name"})
+    t.column_style([2, 4], {"color": "value"})
+    t.column_style(5, {"color": "percent", "num-format": "pct-2"})
     for i,r in enumerate(tab[si:si+n]):
         t.add_row([si+i] + r)
     print()
