@@ -9,8 +9,7 @@ from .utils import *
 
 # Caches to speed up processing
 cache_topcats = {}
-cache_overlap_js = {}
-cache_overlap_oc = {}
+cache_overlap = {}
 
 
 #
@@ -181,7 +180,7 @@ def overlap(corpus, cat1, cat2):
 # Check overlapping words between all categories
 #
 def overlap_all_categories(corpus, n=10, sidx=0, similarity="jaccard"):
-    global cache_overlap_js, cache_overlap_oc
+    global cache_overlap
     similarity = similarity.lower()
     
     # Check all combinations of categories
@@ -195,28 +194,24 @@ def overlap_all_categories(corpus, n=10, sidx=0, similarity="jaccard"):
                 key = f"{cat1}-{cat2}"
                 
                 # Calculate similarity
-                if key in cache_overlap_js and key in cache_overlap_oc:
-                    res_js = cache_overlap_js[key]
-                    res_oc = cache_overlap_oc[key]
+                if key in cache_overlap:
+                    res = cache_overlap[key]
                 else:
                     wrds1 = set(corpus["words_per_category"][cat1])
                     wrds2 = set(corpus["words_per_category"][cat2])
                     tot = wrds1.union(wrds2)
                     overlap = wrds1.intersection(wrds2)
-                    res_js = [len(overlap)/len(tot), len(wrds1), len(wrds2)]
-                    res_oc = [len(overlap)/min(len(wrds2),len(wrds2)), len(wrds1), len(wrds2)]
-                    cache_overlap_js[key] = res_js
-                    cache_overlap_oc[key] = res_oc
+                    res = [len(overlap)/len(tot), len(overlap)/min(len(wrds1),len(wrds2)), len(wrds1), len(wrds2)]
+                    cache_overlap[key] = res
             
                 # Check similarity to use
                 if similarity in [2, "oc", "overlap coefficient", "overlap"]:
-                    res = res_oc
+                    tab.append([cat1, res[2], cat2, res[3], res[1]])
                 elif similarity in [1, "ji", "jaccard similarity", "jaccard"]:
-                    res = res_js
+                    tab.append([cat1, res[2], cat2, res[3], res[0]])
                 else:
                     error("Unknown similarity " + colored(similarity, "cyan"))
                     return
-                tab.append([cat1, res[1], cat2, res[2], res[0]])
     tab = sorted(tab, key=lambda x: x[4], reverse=True)
     
     # Start and end index
