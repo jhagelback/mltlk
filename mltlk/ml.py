@@ -108,24 +108,17 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                     s += li + ", "
             if s != "":
                 info("Removed minority categories " + colored(s[:-2], "cyan"))
-    
-    # Encode labels
-    if "encode_labels" in conf and conf["encode_labels"]:
-        session["label_encoder"] = LabelEncoder().fit(session["y"])
-        session["y"] = session["label_encoder"].transform(session["y"])
-        if verbose >= 1:
-            info("Labels encoded")
             
     # Check text inputs without text preprocessing
     if conf["preprocess"] not in ["bag-of-words", "bow", "wordtovec", "word2vec"]:
-        if type(X[0]) == str:
+        if type(session["X"][0]) == str:
             error("Input seems to be text but no text-preprocessing is set")
             return None
         
     # Check ordinal features without encoding
     if conf["preprocess"] not in ["one-hot", "onehot", "one hot", "ordinal"]:
-        if type(X[0]) != str:
-            for xi in X[0]:
+        if type(session["X"][0]) != str:
+            for xi in session["X"][0]:
                 if type(xi) == str:
                     error("Input contains ordinal features but no encoding is set (use " + colored("one-hot", "blue") + " or " + colored("ordinal", "blue") + ")")
                     return None
@@ -145,6 +138,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                 # Remove new line and whitespaces
                 xi = xi.replace("<br>", " ")
                 xi = xi.replace("&nbsp;", " ")
+                xi = xi.replace("\n", " ")
                 # Remove special chars
                 if conf["clean_text"] in [2, "letters digits", "digits letters"]:
                     xi = re.sub("[^a-zA-Z0-9åäöÅÄÖ ]", " ", xi)
@@ -157,6 +151,14 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                 # Strip trailing/leading whitespaces
                 xi = xi.strip()
                 session["X"][i] = xi
+            session["X_original"] = session["X"].copy()
+    
+    # Encode labels
+    if "encode_labels" in conf and conf["encode_labels"]:
+        session["label_encoder"] = LabelEncoder().fit(session["y"])
+        session["y"] = session["label_encoder"].transform(session["y"])
+        if verbose >= 1:
+            info("Labels encoded")
     
     # Bag-of-words representation for input texts
     if conf["preprocess"] in ["bag-of-words", "bow"]:
@@ -168,7 +170,8 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             l = "Used bag-of-words"
         session["bow"] = CountVectorizer(stop_words=sw).fit(session["X"]) #todo: max_features=max_words, ngram_range=ngram)
         session["X"] = session["bow"].transform(session["X"])
-    
+        session["stopwords"] = sw
+        
         # TF-IDF conversion for bag-of-words
         if "TF-IDF" in conf and conf["TF-IDF"] or "tf-idf" in conf and conf["tf-idf"]:
             session["TF-IDF"] = TfidfTransformer().fit(session["X"])

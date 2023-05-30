@@ -2,10 +2,10 @@
 from termcolor import colored
 import time
 from datetime import datetime
+from os.path import exists
+import pandas as pd
 # Stopwords
 from nltk.corpus import stopwords
-import pandas as pd
-from os.path import exists
 
 
 #
