@@ -48,7 +48,10 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     if not exists(file):
         error("data file " + colored(file, "cyan") + " not found")
         return None
-    data = pd.read_csv(file).values
+    data = pd.read_csv(file)
+    cols = list(data.columns)
+    data = data.values
+    
     session["file"] = file
     
     # Set X features to be all but last column
@@ -57,6 +60,11 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     # Set y to be last column
     if ycol is None:
         ycol = len(data[0]) - 1
+    
+    # Update columns
+    session["columns"] = []
+    for idx in Xcols:
+        session["columns"].append(cols[idx])
     
     # Convert to X and y
     X = []
