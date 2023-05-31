@@ -80,6 +80,11 @@ def plot_data(session, conf={}):
         t.display()
         print()
         
+    # Title
+    title = None
+    if conf["category"] is not None:
+        title = conf["category"]
+        
     # Table (nominal features)
     if len(nom_data["series"]) > 0 and conf["table"]:
         t = CustomizedTable(["Feature<br><font style='font-weight: normal'>(nominal)</font>", "Values (occurences)"])
@@ -95,15 +100,14 @@ def plot_data(session, conf={}):
                 label,
                 vtxt,
             ])
+        if title is not None:
+            t.add_colspan_row([[title,2]], style={"color": "#000", "font": "bold", "background": "#ddd", "row-toggle-background": 0, "border": "top bottom"})
         print()
         t.display()
         print()
     
     # Show plot for numerical features
     if len(num_data["series"]) > 0 and conf["plot"]:
-        title = None
-        if conf["category"] is not None:
-            title = conf["category"]
         box_plot(num_data, opts={
             "grid": True,
             "font": "Verdana",
@@ -130,15 +134,33 @@ def plot_data_per_category(session, conf={}):
     key = "X_original"
     if conf["mode"] in ["scale", "scaled"]:
         key = "X"
-        
-    # Get min/max for all features
-    vals = []
-    for xi in session[key]:
-        for v in xi:
-            if type(v) != str:
-                vals.append(v)
-                
-    # Categories
-    cats = np.unique(session["y_original"])
-    for cat in cats:
-        plot_data(session, conf={"category": cat, "table": False, "size": (10,4), "lim": (np.min(vals)-0.1,np.max(vals)+0.1)})
+    
+    nom = False
+    num = False
+    for i,col in enumerate(session["columns"]):
+        # Nominal feature
+        if type(session[key][i][0]) == str:
+            nom = True
+        # Numeric features
+        else:
+            num = True
+    
+    # Nummeric features
+    if num:
+        # Get min/max for all features
+        vals = []
+        for xi in session[key]:
+            for v in xi:
+                if type(v) != str:
+                    vals.append(v)
+
+        # Categories
+        cats = np.unique(session["y_original"])
+        for cat in cats:
+            plot_data(session, conf={"category": cat, "table": False, "size": (10,4), "lim": (np.min(vals)-0.1,np.max(vals)+0.1)})
+            
+    if nom:
+        # Categories
+        cats = np.unique(session["y_original"])
+        for cat in cats:
+            plot_data(session, conf={"category": cat, "plot": False})
