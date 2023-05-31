@@ -157,7 +157,7 @@ def plot_data_per_category(session, conf={}):
         # Categories
         cats = np.unique(session["y_original"])
         for cat in cats:
-            plot_data(session, conf={"category": cat, "table": False, "size": (10,4), "lim": (np.min(vals)-0.1,np.max(vals)+0.1)})
+            plot_data(session, conf={"category": cat, "table": False, "size": (10,4), "lim": (np.min(vals)-0.1,np.max(vals)+0.1), "mode": conf["mode"]})
             
     if nom:
         # Categories
