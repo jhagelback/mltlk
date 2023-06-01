@@ -24,7 +24,9 @@ from os import makedirs
 import gzip
 # Resampling
 from .resampling import resample
+# Word vectors
 from .word2vec import *
+from .embeddings import *
 
 
 #
@@ -112,7 +114,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                 info("Removed minority categories " + colored(s[:-2], "cyan"))
             
     # Check text inputs without text preprocessing
-    if conf["preprocess"] not in ["bag-of-words", "bow", "wordtovec", "word2vec"]:
+    if conf["preprocess"] not in ["bag-of-words", "bow", "wordtovec", "word2vec", "embeddings"]:
         if type(session["X"][0]) == str:
             error("Input seems to be text but no text-preprocessing is set")
             return None
@@ -126,7 +128,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                     return None
     
     # Clean text inputs
-    if "clean_text" in conf and conf["preprocess"] in ["word2vec", "bag-of-words", "bow"]:
+    if "clean_text" in conf and conf["preprocess"] in ["word2vec", "bag-of-words", "bow", "embeddings"]:
         clean = True
         if conf["clean_text"] in [2, "letters digits", "digits letters"]:
             info("Clean texts keeping letters and digits")
@@ -161,7 +163,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         session["y"] = session["label_encoder"].transform(session["y"])
         if verbose >= 1:
             info("Labels encoded")
-            
+        
     # Bag-of-words representation for input texts
     if conf["preprocess"] in ["bag-of-words", "bow"]:
         sw = load_stopwords(conf, verbose=verbose)
@@ -181,10 +183,15 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             l += " and TF-IDF"
         if verbose >= 1:
             info(l)
+            
     # Word2vec
     if conf["preprocess"] in ["word2vec", "wordtovec"]:
         load_word2vec_data(session, conf, verbose=verbose)
         
+    # Keras embeddings
+    if conf["preprocess"] in ["embeddings"]:
+        load_embeddings_data(session, conf, verbose=verbose)
+    
     # One-hot encoding
     if conf["preprocess"] in ["one-hot", "onehot", "one hot"]:
         session["scaler"] = OneHotEncoder(handle_unknown="ignore").fit(session["X"])
@@ -486,8 +493,9 @@ class KerasWrapper:
             return
         
         # One-hot encode labels
-        from tensorflow.keras.utils import to_categorical
-        y = to_categorical(y, len(np.unique(y)))
+        if self.model.layers[-1].output_shape[1] > 1:
+            from tensorflow.keras.utils import to_categorical
+            y = to_categorical(y, len(np.unique(y)))
         
         # X must by np array
         if type(X) == list:
@@ -505,10 +513,20 @@ class KerasWrapper:
             error("Model has not been trained")
             return None
         
+        # X must by np array
+        if type(X) == list:
+            X = np.asarray(np.asarray([xi for xi in X]))
+        
         # Get predictions
-        y_pred = self.model(X) #self.model.predict(X, verbose=0)
+        y_pred = self.model(X)
         # Convert back from one-hot
-        y_pred = np.argmax(y_pred, axis=1)
+        if self.model.layers[-1].output_shape[1] > 1:
+            y_pred = np.argmax(y_pred, axis=1)
+        else:
+            y_pp = []
+            for yi in y_pred:
+                y_pp.append(int(round(yi.numpy()[0],0)))
+            y_pred = y_pp
         # Return result
         return y_pred
     
@@ -890,7 +908,7 @@ def predict(xi, session):
         return
     
     # Error checks
-    if type(xi) == str and session["preprocess"] not in ["bag-of-words", "bow", "word2vec", "wordtovec"]:
+    if type(xi) == str and session["preprocess"] not in ["bag-of-words", "bow", "word2vec", "wordtovec", "embeddings"]:
         error("Example is text but no text preprocessing is specified")
         return
     
@@ -909,6 +927,16 @@ def predict(xi, session):
     # Word2vec
     if type(xi) == str and session["preprocess"] in ["word2vec", "wordtovec"]:
         X = [word_vector(xi, session)]
+        pred = session["model"].predict(X)
+        res = pred[0]
+        if "label_encoder" in session:
+            res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+        info("Example is predicted as " + colored(res, "green"))
+        return
+    
+    # Embeddings
+    if type(xi) == str and session["preprocess"] in ["embeddings"]:
+        X = embedding(xi, session)
         pred = session["model"].predict(X)
         res = pred[0]
         if "label_encoder" in session:
