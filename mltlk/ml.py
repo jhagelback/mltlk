@@ -9,20 +9,14 @@ import matplotlib.pyplot as plt
 import re
 from .utils import *
 # Pre-processing
-from sklearn.preprocessing import LabelEncoder
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
-from sklearn.preprocessing import Normalizer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import OrdinalEncoder
-# Classifiers
-from sklearn.naive_bayes import MultinomialNB
-from sklearn.svm import LinearSVC
-from sklearn.neural_network import MLPClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler, Normalizer, OneHotEncoder, OrdinalEncoder, LabelEncoder
 # Evaluation
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, confusion_matrix, ConfusionMatrixDisplay
+# Cross-validation
+from sklearn.model_selection import KFold
+from sklearn.base import clone
 # File stuff
 from pickle import dump,load
 from os.path import exists
@@ -162,12 +156,12 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             session["X_original"] = session["X"].copy()
     
     # Encode labels
-    if "encode_labels" in conf and conf["encode_labels"]:
+    if "encode_labels" in conf and conf["encode_labels"] in ["encode", True]:
         session["label_encoder"] = LabelEncoder().fit(session["y"])
         session["y"] = session["label_encoder"].transform(session["y"])
         if verbose >= 1:
             info("Labels encoded")
-    
+            
     # Bag-of-words representation for input texts
     if conf["preprocess"] in ["bag-of-words", "bow"]:
         sw = load_stopwords(conf, verbose=verbose)
@@ -223,7 +217,11 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     session["preprocess"] = conf["preprocess"]
         
     if verbose >= 1:
-        info("Loaded " + colored(f"{len(session['y'])}", "blue") + " examples in " + colored(f"{len(Counter(session['y']))}", "blue") + " categories")
+        if type(session["y"]) == list:
+            nex = len(session["y"])
+        else:
+            nex = session["y"].shape[0]
+        info("Loaded " + colored(f"{nex}", "blue") + " examples in " + colored(f"{len(Counter(session['y_original']))}", "blue") + " categories")
     
     return session
 
@@ -244,7 +242,9 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
             warning("Invalid type for descriptions (expected " + colored("dict", "cyan") + ")")
             descriptions = None
     
+    # Get categories
     y = session["y"]
+    
     cnt = Counter(y)
     tab = []
     for key,no in cnt.items():
@@ -301,7 +301,7 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         r = []
         for j in range(0,3):
             if i < len(tab2[j]):
-                if "label_encoder" in session:
+                if "label_encoder" in session and type(session["label_encoder"]) == LabelEncoder:
                     l = session["label_encoder"].inverse_transform([tab2[j][i][0]])[0]
                     r.append(f"{l} ({tab2[j][i][0]})")
                 else:
@@ -329,10 +329,10 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
     else:
         fts = session["X"].shape[1]
     if descriptions is not None:
-        t.add_row(["Examples:", len(session["y"]), "", "", "", "Features:", fts, "", "", "", "Categories:", len(cnt), "", "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
+        t.add_row(["Examples:", len(y), "", "", "", "Features:", fts, "", "", "", "Categories:", len(cnt), "", "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
         t.cell_style([0,5,10], -1, {"font": "bold"})
     else:
-        t.add_row(["Examples:", len(session["y"]), "", "", "Features:", fts, "", "", "Categories:", len(cnt), "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
+        t.add_row(["Examples:", len(y), "", "", "Features:", fts, "", "", "Categories:", len(cnt), "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
         t.cell_style([0,4,8], -1, {"font": "bold"})
     
     t.display()
@@ -459,12 +459,78 @@ def set_resample(session, conf={}):
 
 
 #
+# Wraps a Keras model to have the same functions as a sklearn model.
+#
+class KerasWrapper:
+    def __init__(self, model, conf):
+        self.model = model
+        self.fitted = False
+        # Check params
+        if "epochs" not in conf:
+            warning(colored("epochs", "cyan") + " not set (using " + colored("5", "blue") + ")")
+            conf["epochs"] = 5
+        if "batch_size" not in conf:
+            warning(colored("batch_size", "cyan") + " not set (using " + colored("32", "blue") + ")")
+            conf["batch_size"] = 32
+        if "loss" not in conf:
+            warning(colored("loss", "cyan") + " not set (using " + colored("categorical_crossentropy", "blue") + ")")
+            conf["loss"] = "categorical_crossentropy"
+        if "optimizer" not in conf:
+            warning(colored("optimizer", "cyan") + " not set (using " + colored("adam", "blue") + ")")
+            conf["optimizer"] = "adam"
+        self.conf = conf
+
+    def fit(self, X, y):
+        if type(y[0]) == str:
+            error("Keras models require numerical categories. Set " + colored("encode_labels", "cyan") + " to " + colored("True", "blue") + " when calling " + colored("load_data()", "cyan"))
+            return
+        
+        # One-hot encode labels
+        from tensorflow.keras.utils import to_categorical
+        y = to_categorical(y, len(np.unique(y)))
+        
+        # X must by np array
+        if type(X) == list:
+            X = np.asarray(np.asarray([xi for xi in X]))
+        
+        # Compile model
+        self.model.compile(loss=self.conf["loss"], optimizer=self.conf["optimizer"], metrics=["accuracy"])
+
+        # Train model
+        self.model.fit(X, y, epochs=self.conf["epochs"], batch_size=self.conf["batch_size"], verbose=0)
+        self.fitted = True
+         
+    def predict(self, X):
+        if not self.fitted:
+            error("Model has not been trained")
+            return None
+        
+        # Get predictions
+        y_pred = self.model(X) #self.model.predict(X, verbose=0)
+        # Convert back from one-hot
+        y_pred = np.argmax(y_pred, axis=1)
+        # Return result
+        return y_pred
+    
+    def clone(self):
+        from tensorflow.keras.models import clone_model
+        # To be absolutely sure the model is cloned we use both ways
+        self.model = clone_model(self.model)
+        self.model = self.model.__class__.from_config(self.model.get_config())
+        self.fitted = False
+        
+
+#
 # Builds and evaluates model
 #
 def evaluate_model(model, session, reload=False, conf={}):
     if session is None:
         error("Session is empty")
         return
+    
+    # Check if we have a Keras model
+    if "keras." in str(type(model)):
+        model = KerasWrapper(model, conf)
     
     # Check mode param
     if "mode" not in conf:
@@ -491,9 +557,15 @@ def evaluate_model(model, session, reload=False, conf={}):
                     error("Cross validation mode must be " + colored("CV", "cyan") + ", " + colored("CV-#", "cyan") + " or " + colored("CV #", "cyan"))
                     return
                 
+            # Clones a model
+            def cloner(_model):
+                if "KerasWrapper" in str(type(_model)):
+                    _model.clone()
+                    return _model
+                else:
+                    return clone(_model, safe=True)
+            
             # Run cross validation
-            from sklearn.model_selection import KFold
-            from sklearn.base import clone
             if "seed" in conf:
                 cvm = KFold(n_splits=cv, random_state=conf["seed"], shuffle=True)
             else:
@@ -514,8 +586,8 @@ def evaluate_model(model, session, reload=False, conf={}):
                     y_train, y_test = session["y"][tf_idx], session["y"][val_idx]
                 if "resample" in session:
                     X_train, y_train = resample(session, X_train, y_train) 
-                # Build model    
-                model_obj = clone(model, safe=True)
+                # Build model
+                model_obj = cloner(model)
                 model_obj.fit(X_train, y_train)
                 y_pred += list(model_obj.predict(X_test))
                 y_actual += list(y_test)
@@ -552,6 +624,13 @@ def evaluate_model(model, session, reload=False, conf={}):
             
         session["mode"] = conf["mode"]
         session["modelid"] = str(model)
+    
+    # Error check
+    if session["y_pred"] is None:
+        error("No predictions was made. Make sure your model works correctly")
+        session["mode"] = ""
+        session["modelid"] = ""
+        return
     
     # Results
     t = CustomizedTable(["Results", ""])
@@ -648,6 +727,10 @@ def build_model(model, session, conf={}):
         return
     if "mode" not in conf:
         conf["mode"] = "all"
+        
+    # Check if we have a Keras model
+    if "keras." in str(type(model)):
+        model = KerasWrapper(model, conf)
     
     if conf["mode"] in ["train-test", "split"]:
         st = time.time()
