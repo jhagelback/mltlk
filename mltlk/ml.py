@@ -773,6 +773,15 @@ def build_model(model, session, conf={}):
     if session is None:
         error("Session is empty")
         return
+    if model is None:
+        error("Model is None")
+        return
+    if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
+        error("Unsupported model type. Only Scikit-learn and Keras models are supported")
+        return
+    if "sklearn." in str(type(model)) and not is_classifier(model):
+        error("Only classification is supported")
+        return
     if "mode" not in conf:
         conf["mode"] = "all"
         
@@ -781,6 +790,9 @@ def build_model(model, session, conf={}):
         model = KerasWrapper(model, conf)
     
     if conf["mode"] in ["train-test", "split"]:
+        if "X_train" not in session or "y_train" not in session:
+            error("Building final model with mode " + colored("split", "cyan") + " requires splitting data with " + colored("split_data()", "cyan"))
+            return
         st = time.time()
         model.fit(session["X_train"], session["y_train"])
         session["model"] = model
@@ -875,16 +887,23 @@ def prediction_errors_for_category(session, category, predicted_category=None, s
 def errors_for_predicted_category(session, category, n=None):
     if session is None:
         error("Session is empty")
-        return
-    
+        return 
     # Check if model has been built
     if "model" not in session:
         error("Final model has not been built. Use the function " + colored("build_model()", "cyan"))
         return
+    # Check if valid category
+    if category not in set(session["y"]):
+        error("Category " + colored(category, "cyan") + " is not a valid category for the dataset")
+        return
     
     # Get test data
-    y_preds = session["model"].predict(session["X_test"])
-    y = session["y_test"]
+    if "X_test" not in session or "y_test" not in session:
+        y_preds = session["model"].predict(session["X"])
+        y = session["y"]
+    else:
+        y_preds = session["model"].predict(session["X_test"])
+        y = session["y_test"]
     
     # Find errors where predictions match specified account
     cnt = 0
@@ -898,6 +917,11 @@ def errors_for_predicted_category(session, category, n=None):
             inf[yi] += 1
         if ypi != yi:
             tot += 1
+            
+    # Check if we have found errors
+    if tot == 0:
+        info("No prediction errors were found for category " + colored(category, "cyan"))
+        return
     
     # Sort results
     linf = []
