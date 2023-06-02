@@ -55,7 +55,7 @@ def load_embeddings_data(session, conf, verbose=1):
     if verbose >= 1:
         tmp = [len(xi) for xi in X]
         tmp = [xi for xi in tmp if xi <= maxlen]
-        info(colored(f"{len(tmp)/len(X)*100:.1f}%", "blue") + " of sequences covered by max length " + colored(f"{maxlen}", "blue"))
+        info(colored(f"{len(tmp)/len(X)*100:.2f}%", "blue") + " of sequences covered by max length " + colored(f"{maxlen}", "blue"))
 
     # Pad input sequences to max length
     X = pad_sequences(X, maxlen=maxlen, padding="post") 

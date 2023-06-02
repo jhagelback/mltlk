@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import re
 from .utils import *
 # Pre-processing
+from sklearn.base import is_classifier, is_regressor
 from sklearn.utils import shuffle
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.model_selection import train_test_split
@@ -83,6 +84,11 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         if len(y_tmp) == len(y):
             # Convert to int
             y = [int(yi) for yi in y]
+            
+    # Check type of categories
+    y_tmp = [yi for yi in y if type(yi) in [float, np.float64]]
+    if len(y_tmp) > 0:
+        warning("Data contains float categories and regression is currently not supported")
             
     # Shuffle
     if "shuffle" in conf and conf["shuffle"]:
@@ -236,7 +242,8 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             nex = len(session["y"])
         else:
             nex = session["y"].shape[0]
-        info("Loaded " + colored(f"{nex}", "blue") + " examples in " + colored(f"{len(Counter(session['y_original']))}", "blue") + " categories")
+        session["categories"] = len(Counter(session['y_original']))
+        info("Loaded " + colored(f"{nex}", "blue") + " examples in " + colored(f"{session['categories']}", "blue") + " categories")
     
     return session
 
@@ -494,14 +501,16 @@ class KerasWrapper:
             warning(colored("optimizer", "cyan") + " not set (using " + colored("adam", "blue") + ")")
             conf["optimizer"] = "adam"
         self.conf = conf
+        self.nout = self.model.layers[-1].output_shape[1]
 
+    # Train Keras model
     def fit(self, X, y):
         if type(y[0]) == str:
             error("Keras models require numerical categories. Set " + colored("encode_labels", "cyan") + " to " + colored("True", "blue") + " when calling " + colored("load_data()", "cyan"))
             return
         
         # One-hot encode labels
-        if self.model.layers[-1].output_shape[1] > 1:
+        if self.nout > 1:
             from tensorflow.keras.utils import to_categorical
             y = to_categorical(y, len(np.unique(y)))
         
@@ -515,7 +524,8 @@ class KerasWrapper:
         # Train model
         self.model.fit(X, y, epochs=self.conf["epochs"], batch_size=self.conf["batch_size"], verbose=0)
         self.fitted = True
-         
+      
+    # Predict with Keras model
     def predict(self, X):
         if not self.fitted:
             error("Model has not been trained")
@@ -553,10 +563,22 @@ def evaluate_model(model, session, reload=False, conf={}):
     if session is None:
         error("Session is empty")
         return
+    if model is None:
+        error("Model is None")
+        return
+    if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
+        error("Unsupported model type. Only Scikit-learn and Keras models are supported")
+        return
+    if "sklearn." in str(type(model)) and not is_classifier(model):
+        error("Only classification is supported")
+        return
     
     # Check if we have a Keras model
     if "keras." in str(type(model)):
         model = KerasWrapper(model, conf)
+        if model.nout > 1 and model.nout != session["categories"]:
+            error("Keras model outputs " + colored(f"{model.nout}", "blue") + " does not match " + colored(f"{session['categories']}", "blue") + " categories")
+            return
     
     # Check mode param
     if "mode" not in conf:
