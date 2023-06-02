@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import re
 from .utils import *
 # Pre-processing
+from sklearn.utils import shuffle
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, Normalizer, OneHotEncoder, OrdinalEncoder, LabelEncoder
@@ -82,6 +83,13 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         if len(y_tmp) == len(y):
             # Convert to int
             y = [int(yi) for yi in y]
+            
+    # Shuffle
+    if "shuffle" in conf and conf["shuffle"]:
+        seed = None
+        if "seed" in conf:
+            seed = conf["seed"]
+        X, y = shuffle(X, y, random_state=seed)
             
     # Update session
     session["X_original"] = X

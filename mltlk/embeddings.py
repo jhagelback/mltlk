@@ -46,6 +46,8 @@ def load_embeddings_data(session, conf, verbose=1):
     
     if "max_length" not in conf or conf["max_length"] is None:
         maxlen = max([len(xi) for xi in X])
+        if verbose >= 1:
+            info("Max length not set, using max length "  + colored(f"{maxlen}", "blue") + " from input examples")
     else:
         maxlen = conf["max_length"]
     
