@@ -186,7 +186,10 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             l += " with stopwords removed"
         elif verbose >= 1:
             l = "Used bag-of-words"
-        session["bow"] = CountVectorizer(stop_words=sw).fit(session["X"]) #todo: max_features=max_words, ngram_range=ngram)
+        maxfts = None
+        if "max_features" in conf:
+            maxfts = conf["max_features"]
+        session["bow"] = CountVectorizer(stop_words=sw, max_features=maxfts).fit(session["X"]) #TODO: ngram_range=ngram
         session["X"] = session["bow"].transform(session["X"])
         session["stopwords"] = sw
         
