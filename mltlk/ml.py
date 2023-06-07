@@ -16,6 +16,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, Normalizer, OneHotEncoder, OrdinalEncoder, LabelEncoder
 # Evaluation
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.calibration import CalibratedClassifierCV
 # Cross-validation
 from sklearn.model_selection import KFold
 from sklearn.base import clone
