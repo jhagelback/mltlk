@@ -655,7 +655,9 @@ def evaluate_model(model, session, reload=False, conf={}):
                     else:
                         model_ccv = CalibratedClassifierCV(model_obj, cv="prefit").fit(X_train, y_train)
                     for Xi,yi in zip(X_test, y_test):
-                        probs = model_ccv.predict_proba([Xi])
+                        if hasattr(model, "predict_proba"):
+                            Xi = [Xi]
+                        probs = model_ccv.predict_proba(Xi)
                         best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
                         best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
                         codes = model_ccv.classes_
