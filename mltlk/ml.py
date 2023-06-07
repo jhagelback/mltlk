@@ -622,6 +622,7 @@ def evaluate_model(model, session, reload=False, conf={}):
             else:
                 cvm = KFold(n_splits=cv, shuffle=False)
             y_pred = []
+            y_pred_topn = []
             y_actual = []
             for tf_idx, val_idx in cvm.split(session["X"], session["y"]):
                 if type(session["X"]) == list:
@@ -642,8 +643,35 @@ def evaluate_model(model, session, reload=False, conf={}):
                 model_obj.fit(X_train, y_train)
                 y_pred += list(model_obj.predict(X_test))
                 y_actual += list(y_test)
+                
+                # Top n result
+                if "top_n" in conf:
+                    if (type(conf["top_n"]) != int) or conf["top_n"] < 2:
+                        warning("Invalid value for " + colored("top_n", "cyan") + ". Using " + colored("5", "blue"))
+                        conf["top_n"] = 5
+                    if hasattr(model, "predict_proba"):
+                        model_ccv = model_obj
+                    else:
+                        model_ccv = CalibratedClassifierCV(model_obj, cv="prefit").fit(X_train, y_train)
+                    for Xi,yi in zip(X_test, y_test):
+                        probs = model_ccv.predict_proba([Xi])
+                        best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
+                        best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
+                        codes = model_ccv.classes_
+                        ypn = False
+                        for i,c in enumerate(best_codes):
+                            if codes[c] == yi:
+                                ypn = True
+                        if ypn:
+                            y_pred_topn.append(yi)
+                        else:
+                            y_pred_topn.append(codes[best_codes[0]])
+    
             session["y_pred"] = y_pred
             session["y_actual"] = y_actual
+            if "top_n" in conf:
+                session["y_pred_topn"] = y_pred_topn
+                session["top_n"] = conf["top_n"]
             
             en = time.time()
             print(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
@@ -659,6 +687,33 @@ def evaluate_model(model, session, reload=False, conf={}):
             model.fit(X_train, y_train)
             session["y_pred"] = model.predict(session["X_test"])
             session["y_actual"] = session["y_test"]
+            
+            # Top n result
+            if "top_n" in conf:
+                y_pred_topn = []
+                if (type(conf["top_n"]) != int) or conf["top_n"] < 2:
+                    warning("Invalid value for " + colored("top_n", "cyan") + ". Using " + colored("5", "blue"))
+                    conf["top_n"] = 5
+                if hasattr(model, "predict_proba"):
+                    model_ccv = model
+                else:
+                    model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(X_train, y_train)
+                for Xi,yi in zip(session["X_test"], session["y_test"]):
+                    probs = model_ccv.predict_proba([Xi])
+                    best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
+                    best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
+                    codes = model_ccv.classes_
+                    ypn = False
+                    for i,c in enumerate(best_codes):
+                        if codes[c] == yi:
+                            ypn = True
+                    if ypn:
+                        y_pred_topn.append(yi)
+                    else:
+                        y_pred_topn.append(codes[best_codes[0]])
+                session["y_pred_topn"] = y_pred_topn
+                session["top_n"] = conf["top_n"]
+                
             en = time.time()
             print("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
         elif conf["mode"].lower() in ["all", ""]:
@@ -666,6 +721,33 @@ def evaluate_model(model, session, reload=False, conf={}):
             model.fit(session["X"], session["y"])
             session["y_pred"] = model.predict(session["X"])
             session["y_actual"] = session["y"]
+            
+            # Top n result
+            if "top_n" in conf:
+                y_pred_topn = []
+                if (type(conf["top_n"]) != int) or conf["top_n"] < 2:
+                    warning("Invalid value for " + colored("top_n", "cyan") + ". Using " + colored("5", "blue"))
+                    conf["top_n"] = 5
+                if hasattr(model, "predict_proba"):
+                    model_ccv = model
+                else:
+                    model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(session["X"], session["y"])
+                for Xi,yi in zip(session["X"], session["y"]):
+                    probs = model_ccv.predict_proba([Xi])
+                    best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
+                    best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
+                    codes = model_ccv.classes_
+                    ypn = False
+                    for i,c in enumerate(best_codes):
+                        if codes[c] == yi:
+                            ypn = True
+                    if ypn:
+                        y_pred_topn.append(yi)
+                    else:
+                        y_pred_topn.append(codes[best_codes[0]])
+                session["y_pred_topn"] = y_pred_topn
+                session["top_n"] = conf["top_n"]
+            
             en = time.time()
             print("Building and evaluating model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
             conf["mode"] = "all"
@@ -690,6 +772,9 @@ def evaluate_model(model, session, reload=False, conf={}):
     t.add_row(["F1-score:", float(f1_score(session["y_actual"], session["y_pred"], average="weighted"))])
     t.add_row(["Precision:", float(precision_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
     t.add_row(["Recall:", float(recall_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
+    if "y_pred_topn" in session:
+        t.add_row([f"Accuracy (top {session['top_n']}):", float(accuracy_score(session["y_actual"], session["y_pred_topn"]))])
+        t.add_row([f"F1-score (top {session['top_n']}):", float(f1_score(session["y_actual"], session["y_pred_topn"], average="weighted"))])
     print()
     t.display()
     
