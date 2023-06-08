@@ -2,5 +2,5 @@ from .ml import *
 from .exploration_textdata import *
 from .exploration_tabdata import *
 
-__version__ = "0.1.20"
+__version__ = "0.1.21"
 __author__ = "Johan Hagelbäck"

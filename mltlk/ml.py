@@ -482,6 +482,17 @@ def set_resample(session, conf={}):
     # Reset mode to rebuild model
     if "mode" in session:
         session["mode"] = ""
+        
+        
+# 
+# Clear resample settings
+#
+def clear_resample(session):
+    if "resample" in session:
+        del session["resample"]
+        info("Removed resample settings")
+    else:
+        warning("No resample settings found in session")
 
 
 #
@@ -597,6 +608,9 @@ def evaluate_model(model, session, reload=False, conf={}):
     
     # Build model and predict data (if not already built)
     if "y_pred" not in session or reload:
+        #
+        # Cross-validation
+        #
         if conf["mode"].lower().startswith("cv"):
             st = time.time()
             cv = 5
@@ -617,11 +631,13 @@ def evaluate_model(model, session, reload=False, conf={}):
                 else:
                     return clone(_model, safe=True)
             
-            # Run cross validation
+            # Get folds
             if "seed" in conf:
                 cvm = KFold(n_splits=cv, random_state=conf["seed"], shuffle=True)
             else:
                 cvm = KFold(n_splits=cv, shuffle=False)
+                
+            # Run cross validation
             y_pred = []
             y_pred_topn = []
             y_actual = []
@@ -637,6 +653,7 @@ def evaluate_model(model, session, reload=False, conf={}):
                     y_test = [session["y"][i] for i in val_idx]
                 else:
                     y_train, y_test = session["y"][tf_idx], session["y"][val_idx]
+                # Resample
                 if "resample" in session:
                     X_train, y_train = resample(session, X_train, y_train) 
                 # Build model
@@ -678,6 +695,10 @@ def evaluate_model(model, session, reload=False, conf={}):
             
             en = time.time()
             print(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
+            
+        #
+        # Train-test split
+        #
         elif conf["mode"].lower() in ["train-test", "split"]:
             st = time.time()
             if "X_train" not in session or "y_train" not in session:
@@ -685,6 +706,7 @@ def evaluate_model(model, session, reload=False, conf={}):
                 return
             X_train = session["X_train"]
             y_train = session["y_train"]
+            # Resample
             if "resample" in session:
                 X_train, y_train = resample(session, X_train, y_train)
             model.fit(X_train, y_train)
@@ -719,11 +741,20 @@ def evaluate_model(model, session, reload=False, conf={}):
                 
             en = time.time()
             print("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
+        #
+        # All data
+        #
         elif conf["mode"].lower() in ["all", ""]:
             st = time.time()
-            model.fit(session["X"], session["y"])
-            session["y_pred"] = model.predict(session["X"])
-            session["y_actual"] = session["y"]
+            X = session["X"]
+            y = session["y"]
+            # Resample
+            if "resample" in session:
+                warning("Resampling when using all data for both training and testing can give incorrect accuracy")
+                X, y = resample(session, X, y)
+            model.fit(X, y)
+            session["y_pred"] = model.predict(X)
+            session["y_actual"] = y
             
             # Top n result
             if "top_n" in conf:
@@ -734,7 +765,7 @@ def evaluate_model(model, session, reload=False, conf={}):
                 if hasattr(model, "predict_proba"):
                     model_ccv = model
                 else:
-                    model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(session["X"], session["y"])
+                    model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(X, y)
                 for Xi,yi in zip(session["X"], session["y"]):
                     probs = model_ccv.predict_proba([Xi])
                     best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
@@ -885,16 +916,28 @@ def build_model(model, session, conf={}):
             error("Building final model with mode " + colored("split", "cyan") + " requires splitting data with " + colored("split_data()", "cyan"))
             return
         st = time.time()
-        model.fit(session["X_train"], session["y_train"])
+        X = session["X_train"]
+        y = session["y_train"]
+        # Resample
+        if "resample" in session:
+            X, y = resample(session, X, y)
+        model.fit(X, y)
+        y_pred = model.predict(X)
         session["model"] = model
         en = time.time()
-        info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec")
+        info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
     elif conf["mode"] in ["all", ""]:
         st = time.time()
-        model.fit(session["X"], session["y"])
+        X = session["X"]
+        y = session["y"]
+        # Resample
+        if "resample" in session:
+            X, y = resample(session, X, y)
+        model.fit(X, y)
+        y_pred = model.predict(X)
         session["model"] = model
         en = time.time()
-        info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
+        info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
     else:
         error("Invalid mode " + colored(conf["mode"], "cyan"))
 
