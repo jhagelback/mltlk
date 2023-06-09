@@ -16,6 +16,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, Normalizer, OneHotEncoder, OrdinalEncoder, LabelEncoder
 # Evaluation
 from sklearn.metrics import accuracy_score, f1_score, recall_score, precision_score, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.metrics import mean_absolute_error,r2_score,mean_squared_error
 from sklearn.calibration import CalibratedClassifierCV
 # Cross-validation
 from sklearn.model_selection import KFold
@@ -38,10 +39,11 @@ from .embeddings import *
 def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     session = {}
     
-    # Check config
+    # Check preprocess
     if "preprocess" not in conf:
         conf["preprocess"] = ""
     conf["preprocess"] = conf["preprocess"].lower()
+    session["preprocess"] = conf["preprocess"]
     
     # Load data
     if not exists(file):
@@ -64,6 +66,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     session["columns"] = []
     for idx in Xcols:
         session["columns"].append(cols[idx])
+    session["target"] = cols[ycol]
     
     # Convert to X and y
     X = []
@@ -78,6 +81,10 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         X.append(row)
         y.append(r[ycol])
         
+    # If single feature only and not text, convert to list of lists
+    if type(X[0]) != list and type(X[0]) != str:
+        X = [[xi] for xi in X]
+        
     # Check if all yi is integer
     y_tmp = [yi for yi in y if type(yi) in [float, np.float64]]
     if len(y_tmp) == len(y):
@@ -85,11 +92,6 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         if len(y_tmp) == len(y):
             # Convert to int
             y = [int(yi) for yi in y]
-            
-    # Check type of categories
-    y_tmp = [yi for yi in y if type(yi) in [float, np.float64]]
-    if len(y_tmp) > 0:
-        warning("Data contains float categories and regression is currently not supported")
             
     # Shuffle
     if "shuffle" in conf and conf["shuffle"]:
@@ -103,6 +105,21 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     session["y_original"] = y
     session["X"] = X.copy()
     session["y"] = y.copy()
+    
+    # Regression
+    if conf["preprocess"] == "regression":
+        if verbose >= 1:
+            if type(session["y"]) == list:
+                nex = len(session["y"])
+            else:
+                nex = session["y"].shape[0]
+            info("Loaded " + colored(f"{nex}", "blue") + " examples for regression target")
+        return session
+    
+    # Check type of categories
+    y_tmp = [yi for yi in y if type(yi) in [float, np.float64]]
+    if len(y_tmp) > 0:
+        warning("Data contains float categories and regression preprocess is not set")
     
     # Skip minority categories
     if "min_samples" in conf:
@@ -127,7 +144,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                     s += li + ", "
             if s != "":
                 info("Removed minority categories " + colored(s[:-2], "cyan"))
-            
+        
     # Check text inputs without text preprocessing
     if conf["preprocess"] not in ["bag-of-words", "bow", "wordtovec", "word2vec", "embeddings"]:
         if type(session["X"][0]) == str:
@@ -238,9 +255,6 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         if verbose >= 1:
             info("Normalized input data")
             
-    # Set mode in session
-    session["preprocess"] = conf["preprocess"]
-        
     if verbose >= 1:
         if type(session["y"]) == list:
             nex = len(session["y"])
@@ -258,6 +272,24 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
 def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
     if session is None:
         error("Session is empty")
+        return
+    
+    # Regression
+    if session["preprocess"] == "regression":
+        if type(session["y"]) == list:
+            nex = len(session["y"])
+        else:
+            nex = session["y"].shape[0]
+            
+        t = CustomizedTable(["",session["target"]])
+        t.column_style(1, {"color": "value", "num-format": "int-2"})
+        t.add_row(["Examples:", nex])
+        t.add_row(["Mean:", float(np.mean(session['y']))])
+        t.add_row(["Min:", float(np.min(session['y']))])
+        t.add_row(["Max:", float(np.max(session['y']))])
+        t.add_row(["Stdev:", float(np.std(session['y']))])
+        t.display()
+        
         return
     
     # Set descriptions (if found)
@@ -584,9 +616,6 @@ def evaluate_model(model, session, reload=False, conf={}):
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
-    if "sklearn." in str(type(model)) and not is_classifier(model):
-        error("Only classification is supported")
-        return
     
     # Check if we have a Keras model
     if "keras." in str(type(model)):
@@ -741,6 +770,7 @@ def evaluate_model(model, session, reload=False, conf={}):
                 
             en = time.time()
             print("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
+            
         #
         # All data
         #
@@ -799,91 +829,102 @@ def evaluate_model(model, session, reload=False, conf={}):
         session["modelid"] = ""
         return
     
-    # Results
-    t = CustomizedTable(["Results", ""])
-    t.column_style(1, {"color": "percent", "num-format": "pct-2"})
-    t.add_row(["Accuracy:", float(accuracy_score(session["y_actual"], session["y_pred"]))])
-    t.add_row(["F1-score:", float(f1_score(session["y_actual"], session["y_pred"], average="weighted"))])
-    t.add_row(["Precision:", float(precision_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
-    t.add_row(["Recall:", float(recall_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
-    if "y_pred_topn" in session:
-        t.add_row([f"Accuracy (top {session['top_n']}):", float(accuracy_score(session["y_actual"], session["y_pred_topn"]))])
-        t.add_row([f"F1-score (top {session['top_n']}):", float(f1_score(session["y_actual"], session["y_pred_topn"], average="weighted"))])
-    print()
-    t.display()
-    
-    # Results per category
-    if "categories" in conf and conf["categories"]:
-        # Generate sorted list of category results
-        cats = np.unique(session["y_actual"])
-        cm = confusion_matrix(session["y_actual"], session["y_pred"])
-        tmp = []
-        for i,cat,r in zip(range(0,len(cats)),cats,cm):
-            # Generate errors
-            errs = []
-            for j in range(0,len(r)):
-                if i != j and r[j] > 0:
-                    errs.append([r[j], cats[j]])
-            tmp.append([r[i]/sum(r),cat,sum(r),errs])
-        tmp = sorted(tmp, reverse=True)
-        # Show table
-        if "descriptions" not in session:
-            t = CustomizedTable(["Category", "Accuracy", "n"], style={"row-toggle-background": 0})
-        else:
-            t = CustomizedTable(["Category", "Accuracy", "n", "Description"], style={"row-toggle-background": 0})
-            t.column_style("Description", {"color": "#05760f"})
-        t.column_style(0, {"color": "#048512"})
-        t.column_style(1, {"color": "percent", "num-format": "pct-2"})
-        t.column_style(2, {"color": "value"})
-        sidx = 0
-        maxcats = len(tmp)
-        if "sidx" in conf:
-            sidx = conf["sidx"]
-        if "max_categories" in conf:
-            maxcats = conf["max_categories"]
-        for r in tmp[sidx:sidx+maxcats]:
-            cat = r[1]
-            if "label_encoder" in session:
-                l = session["label_encoder"].inverse_transform([cat])[0]
-                cat = f"{l} ({cat})"
-            row = [cat, float(r[0]), r[2]]
-            if "descriptions" in session:
-                row.append(session["descriptions"][r[1]])
-            t.add_row(row, style={"border": "top", "background": "#eee"})
-            if len(r[3]) > 0:
-                errs = sorted(r[3], reverse=True)
-                if "max_errors" in conf:
-                    errs = errs[:conf["max_errors"]]
-                for err in errs:
-                    ecat = err[1]
-                    if "label_encoder" in session:
-                        l = session["label_encoder"].inverse_transform([ecat])[0]
-                        ecat = f"{l} ({ecat})"
-                    erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0]]
-                    if "descriptions" in session:
-                        erow.append(session["descriptions"][err[1]])
-                    t.add_row(erow)
-                    if "descriptions" in session:
-                        t.cell_style(3,-1, {"color": "#fb6d6d"})
-                    t.cell_style(0,-1, {"color": "#fd8e8a"})
-                    t.cell_style([1,2],-1, {"color": "#aaa4fa"})
+    # Results (regression)
+    if session["preprocess"] == "regression":
+        t = CustomizedTable(["Results", ""])
+        t.column_style(1, {"color": "value", "num-format": "int-2"})
+        t.add_row(["R^2 score:", float(r2_score(session["y_actual"], session["y_pred"]))])
+        t.add_row(["Mean Absolute Error (MAE):", float(mean_absolute_error(session["y_actual"], session["y_pred"]))])
+        t.add_row(["Root Mean Squared Error (RMSE):", float(mean_squared_error(session["y_actual"], session["y_pred"]))])
         print()
         t.display()
         
-    # Confusion matrix
-    if "confusion_matrix" in conf and conf["confusion_matrix"]:
+    # Results (classification)
+    else:
+        t = CustomizedTable(["Results", ""])
+        t.column_style(1, {"color": "percent", "num-format": "pct-2"})
+        t.add_row(["Accuracy:", float(accuracy_score(session["y_actual"], session["y_pred"]))])
+        t.add_row(["F1-score:", float(f1_score(session["y_actual"], session["y_pred"], average="weighted"))])
+        t.add_row(["Precision:", float(precision_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
+        t.add_row(["Recall:", float(recall_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
+        if "y_pred_topn" in session:
+            t.add_row([f"Accuracy (top {session['top_n']}):", float(accuracy_score(session["y_actual"], session["y_pred_topn"]))])
+            t.add_row([f"F1-score (top {session['top_n']}):", float(f1_score(session["y_actual"], session["y_pred_topn"], average="weighted"))])
         print()
-        norm = None
-        if type(conf["confusion_matrix"]) == str:
-            norm = conf["confusion_matrix"]
-        labels = None
-        if "label_encoder" in session:
-            labels = []
-            for cat in cats:
-                l = session["label_encoder"].inverse_transform([cat])[0]
-                labels.append(f"{l} ({cat})")
-        ConfusionMatrixDisplay.from_predictions(session["y_actual"], session["y_pred"], normalize=norm, xticks_rotation="vertical", cmap="inferno", values_format=".2f", colorbar=False, display_labels=labels)
-        plt.show()
+        t.display()
+        
+        # Results per category
+        if "categories" in conf and conf["categories"]:
+            # Generate sorted list of category results
+            cats = np.unique(session["y_actual"])
+            cm = confusion_matrix(session["y_actual"], session["y_pred"])
+            tmp = []
+            for i,cat,r in zip(range(0,len(cats)),cats,cm):
+                # Generate errors
+                errs = []
+                for j in range(0,len(r)):
+                    if i != j and r[j] > 0:
+                        errs.append([r[j], cats[j]])
+                tmp.append([r[i]/sum(r),cat,sum(r),errs])
+            tmp = sorted(tmp, reverse=True)
+            # Show table
+            if "descriptions" not in session:
+                t = CustomizedTable(["Category", "Accuracy", "n"], style={"row-toggle-background": 0})
+            else:
+                t = CustomizedTable(["Category", "Accuracy", "n", "Description"], style={"row-toggle-background": 0})
+                t.column_style("Description", {"color": "#05760f"})
+            t.column_style(0, {"color": "#048512"})
+            t.column_style(1, {"color": "percent", "num-format": "pct-2"})
+            t.column_style(2, {"color": "value"})
+            sidx = 0
+            maxcats = len(tmp)
+            if "sidx" in conf:
+                sidx = conf["sidx"]
+            if "max_categories" in conf:
+                maxcats = conf["max_categories"]
+            for r in tmp[sidx:sidx+maxcats]:
+                cat = r[1]
+                if "label_encoder" in session:
+                    l = session["label_encoder"].inverse_transform([cat])[0]
+                    cat = f"{l} ({cat})"
+                row = [cat, float(r[0]), r[2]]
+                if "descriptions" in session:
+                    row.append(session["descriptions"][r[1]])
+                t.add_row(row, style={"border": "top", "background": "#eee"})
+                if len(r[3]) > 0:
+                    errs = sorted(r[3], reverse=True)
+                    if "max_errors" in conf:
+                        errs = errs[:conf["max_errors"]]
+                    for err in errs:
+                        ecat = err[1]
+                        if "label_encoder" in session:
+                            l = session["label_encoder"].inverse_transform([ecat])[0]
+                            ecat = f"{l} ({ecat})"
+                        erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0]]
+                        if "descriptions" in session:
+                            erow.append(session["descriptions"][err[1]])
+                        t.add_row(erow)
+                        if "descriptions" in session:
+                            t.cell_style(3,-1, {"color": "#fb6d6d"})
+                        t.cell_style(0,-1, {"color": "#fd8e8a"})
+                        t.cell_style([1,2],-1, {"color": "#aaa4fa"})
+            print()
+            t.display()
+
+        # Confusion matrix
+        if "confusion_matrix" in conf and conf["confusion_matrix"]:
+            print()
+            norm = None
+            if type(conf["confusion_matrix"]) == str:
+                norm = conf["confusion_matrix"]
+            labels = None
+            if "label_encoder" in session:
+                labels = []
+                for cat in cats:
+                    l = session["label_encoder"].inverse_transform([cat])[0]
+                    labels.append(f"{l} ({cat})")
+            ConfusionMatrixDisplay.from_predictions(session["y_actual"], session["y_pred"], normalize=norm, xticks_rotation="vertical", cmap="inferno", values_format=".2f", colorbar=False, display_labels=labels)
+            plt.show()
     
     print()
 
@@ -900,9 +941,6 @@ def build_model(model, session, conf={}):
         return
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
-        return
-    if "sklearn." in str(type(model)) and not is_classifier(model):
-        error("Only classification is supported")
         return
     if "mode" not in conf:
         conf["mode"] = "all"
@@ -925,7 +963,10 @@ def build_model(model, session, conf={}):
         y_pred = model.predict(X)
         session["model"] = model
         en = time.time()
-        info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
+        if session["preprocess"] == "regression":
+            info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec (MAE " + colored(f"{float(mean_absolute_error(y, y_pred)):.2f}", "blue") + ")")
+        else:
+            info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
     elif conf["mode"] in ["all", ""]:
         st = time.time()
         X = session["X"]
@@ -937,7 +978,10 @@ def build_model(model, session, conf={}):
         y_pred = model.predict(X)
         session["model"] = model
         en = time.time()
-        info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
+        if session["preprocess"] == "regression":
+            info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec (MAE " + colored(f"{float(mean_absolute_error(y, y_pred)):.2f}", "blue") + ")")
+        else:
+            info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
     else:
         error("Invalid mode " + colored(conf["mode"], "cyan"))
 
@@ -1139,6 +1183,9 @@ def predict(xi, session):
         res = pred[0]
         if "label_encoder" in session:
             res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+        if session["preprocess"] == "regression" and type(res) in [float, np.float64]:
+            if not float(res).is_integer():
+                res = round(res, 2)
         info("Example is predicted as " + colored(res, "green"))
         return
     
@@ -1147,5 +1194,8 @@ def predict(xi, session):
     res = pred[0]
     if "label_encoder" in session:
         res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
+    if session["preprocess"] == "regression" and type(res) in [float, np.float64]:
+        if not float(res).is_integer():
+            res = round(res, 2)
     info("Example is predicted as " + colored(res, "green"))
     

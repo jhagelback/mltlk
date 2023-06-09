@@ -10,6 +10,10 @@ from collections import Counter
 # Plot numerical/nominal features
 #
 def plot_data(session, conf={}):
+    if session is None:
+        error("Session is empty")
+        return
+    
     # Check config
     if "mode" not in conf:
         conf["mode"] = ""
@@ -126,6 +130,15 @@ def plot_data(session, conf={}):
 # Plot numerical/nominal features per category
 #
 def plot_data_per_category(session, conf={}):
+    if session is None:
+        error("Session is empty")
+        return
+    
+    # Check if classification
+    if session["preprocess"] == "regression":
+        error("Plot data per category requires classification")
+        return
+    
     # Check config
     if "mode" not in conf:
         conf["mode"] = ""

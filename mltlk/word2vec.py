@@ -55,9 +55,6 @@ def load_word2vec_model(session, conf, verbose=1):
                 xi.append(w)
         X.append(xi)
         
-    # Update data
-    session["X"] = X
-    
     # Train Word2Vec model
     start = time.time()
     model = Word2Vec(X, vector_size=conf["w2v_vector_size"], min_count=1)
@@ -122,9 +119,9 @@ def load_word2vec_data(session, conf, verbose=1):
     for xi,yi in zip(session["X"], session["y"]):
         vec = [0] * conf["w2v_vector_size"]
         nn = 0
-        for w in xi:
+        for w in xi.split(" "):
             # Add vectors for each word
-            if w.strip() != "":
+            if w.strip() != "" and w in wtovec:
                 vec = [x1+x2 for x1,x2 in zip(vec,wtovec[w])]
                 nn += 1
         if nn > 0:
@@ -143,9 +140,9 @@ def load_word2vec_data(session, conf, verbose=1):
         info("Word2vec embeddings generated in " + colored(f"{end-start:.2f}", "blue") + " sec")
     
     # Store
-    dump([X,y], gzip.open(f"word2vec/{fname}", "wb"))
-    if verbose >= 1:
-        info("Word2vec embeddings stored to " + colored(f"word2vec/{fname}", "cyan"))
+    #dump([X,y], gzip.open(f"word2vec/{fname}", "wb"))
+    #if verbose >= 1:
+    #    info("Word2vec embeddings stored to " + colored(f"word2vec/{fname}", "cyan"))
 
         
 #
@@ -165,8 +162,7 @@ def word_vector(xi, session):
     vec = [0] * size
     for w in xi.lower().split(" "):
         # Add vectors for each word
-        if w.strip() != "":
-            if w in wtovec:
-                vec = [x1+x2 for x1,x2 in zip(vec,wtovec[w])]
+        if w.strip() != "" and w in wtovec:
+            vec = [x1+x2 for x1,x2 in zip(vec,wtovec[w])]
     return vec
     
