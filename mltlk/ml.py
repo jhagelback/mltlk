@@ -445,6 +445,8 @@ def split_data(session,
     if stratify:
         stratify = session["y"]
         s += " and stratify"
+    else:
+        stratify=None
     
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(session["X"], session["y"], test_size=test_size, random_state=seed, stratify=stratify)
