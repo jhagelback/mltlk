@@ -36,14 +36,43 @@ from .embeddings import *
 #
 # Load and pre-process data
 #
-def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
+def load_data(file, 
+              Xcols=None, 
+              ycol=None,
+              mode="classification",
+              preprocess=None,
+              shuffle_data=False,
+              seed=None,
+              min_samples=None,
+              encode_labels=False,
+              clean_text="letters digits",
+              stopwords=None,
+              max_features=None,
+              tf_idf=True,
+              w2v_vector_size=75,
+              w2v_rebuild=False,
+              embeddings_size=75,
+              embeddings_max_length=None,
+              verbose=1):
     session = {}
     
-    # Check preprocess
-    if "preprocess" not in conf:
-        conf["preprocess"] = ""
-    conf["preprocess"] = conf["preprocess"].lower()
-    session["preprocess"] = conf["preprocess"]
+    # Check params
+    if not check_param(mode, "mode", [str], ["classification", "regression"]): return None
+    session["mode"] = mode
+    if not check_param(preprocess, "preprocess", [str,None], ["normalize", "scale", "one-hot", "ordinal", "bag-of-words", "word2vec", "embeddings", None]): return None
+    session["preprocess"] = preprocess
+    if not check_param(shuffle_data, "shuffle_data", [bool], None): return None
+    if not check_param(seed, "seed", [int,None], None): return None
+    if not check_param(min_samples, "min_samples", [int,None], None): return None
+    if not check_param(encode_labels, "encode_labels", [bool], None): return None
+    if not check_param(clean_text, "clean_text", [str,None], ["letters", "letters digits"]): return None
+    if not check_param(stopwords, "stopwords", [list,None], None): return None
+    if not check_param(max_features, "max_features", [int,None], None): return None
+    if not check_param(tf_idf, "tf_idf", [bool], None): return None
+    if not check_param(w2v_vector_size, "w2v_vector_size", [int], None): return None
+    if not check_param(w2v_rebuild, "w2v_rebuild", [bool], None): return None
+    if not check_param(embeddings_size, "embeddings_size", [int], None): return None
+    if not check_param(embeddings_max_length, "embeddings_max_length", [int,None], None): return None
     
     # Load data
     if not exists(file):
@@ -94,10 +123,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             y = [int(yi) for yi in y]
             
     # Shuffle
-    if "shuffle" in conf and conf["shuffle"]:
-        seed = None
-        if "seed" in conf:
-            seed = conf["seed"]
+    if shuffle_data:
         X, y = shuffle(X, y, random_state=seed)
             
     # Update session
@@ -107,7 +133,7 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
     session["y"] = y.copy()
     
     # Regression
-    if conf["preprocess"] == "regression":
+    if mode == "regression":
         if verbose >= 1:
             if type(session["y"]) == list:
                 nex = len(session["y"])
@@ -122,15 +148,12 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         warning("Data contains float categories and regression preprocess is not set")
     
     # Skip minority categories
-    if "min_samples" in conf:
-        if type(conf["min_samples"]) != int:
-            error("min_samples must be integer")
-            return
+    if min_samples is not None:
         cnt = Counter(session["y"])
         X = []
         y = []
         for xi,yi in zip(session["X"], session["y"]):
-            if cnt[yi] >= conf["min_samples"]:
+            if cnt[yi] >= min_samples:
                 X.append(xi)
                 y.append(yi)
         session["X_original"] = X
@@ -140,19 +163,19 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
         if verbose >= 1:
             s = ""
             for li,ni in cnt.items():
-                if ni < conf["min_samples"]:
+                if ni < min_samples:
                     s += li + ", "
             if s != "":
                 info("Removed minority categories " + colored(s[:-2], "cyan"))
         
     # Check text inputs without text preprocessing
-    if conf["preprocess"] not in ["bag-of-words", "bow", "wordtovec", "word2vec", "embeddings"]:
+    if preprocess not in ["bag-of-words", "word2vec", "embeddings"]:
         if type(session["X"][0]) == str:
             error("Input seems to be text but no text-preprocessing is set")
             return None
         
     # Check ordinal features without encoding
-    if conf["preprocess"] not in ["one-hot", "onehot", "one hot", "ordinal"]:
+    if preprocess not in ["one-hot", "ordinal"]:
         if type(session["X"][0]) != str:
             for xi in session["X"][0]:
                 if type(xi) == str:
@@ -160,59 +183,51 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
                     return None
     
     # Clean text inputs
-    if "clean_text" in conf and conf["preprocess"] in ["word2vec", "bag-of-words", "bow", "embeddings"]:
-        clean = True
-        if conf["clean_text"] in [2, "letters digits", "digits letters"]:
+    if clean_text is not None and preprocess in ["word2vec", "bag-of-words", "embeddings"]:
+        if clean_text == "letters digits":
             info("Clean texts keeping letters and digits")
-        elif conf["clean_text"] in [1, "letters"]:
+        elif clean_text == "letters":
             info("Clean texts keeping letters only")
-        else:
-            warning("Invalid clean text mode " + colored(conf["clean_text"], "cyan"))
-            clean = False
-        if clean:
-            for i,xi in enumerate(session["X"]):
-                # Remove new line and whitespaces
-                xi = xi.replace("<br>", " ")
-                xi = xi.replace("&nbsp;", " ")
-                xi = xi.replace("\n", " ")
-                # Remove special chars
-                if conf["clean_text"] in [2, "letters digits", "digits letters"]:
-                    xi = re.sub("[^a-zA-Z0-9åäöÅÄÖ ]", " ", xi)
-                else:
-                    xi = re.sub("[^a-zA-ZåäöÅÄÖ ]", " ", xi)
-                # Remove multiple whitespaces
-                xi = " ".join(xi.split())
-                # Set to lower case
-                xi = xi.lower()
-                # Strip trailing/leading whitespaces
-                xi = xi.strip()
-                session["X"][i] = xi
-            session["X_original"] = session["X"].copy()
+        for i,xi in enumerate(session["X"]):
+            # Remove new line and whitespaces
+            xi = xi.replace("<br>", " ")
+            xi = xi.replace("&nbsp;", " ")
+            xi = xi.replace("\n", " ")
+            # Remove special chars
+            if clean_text == "letters digits":
+                xi = re.sub("[^a-zA-Z0-9åäöÅÄÖ ]", " ", xi)
+            elif clean_text == "letters":
+                xi = re.sub("[^a-zA-ZåäöÅÄÖ ]", " ", xi)
+            # Remove multiple whitespaces
+            xi = " ".join(xi.split())
+            # Set to lower case
+            xi = xi.lower()
+            # Strip trailing/leading whitespaces
+            xi = xi.strip()
+            session["X"][i] = xi
+        session["X_original"] = session["X"].copy()
     
     # Encode labels
-    if "encode_labels" in conf and conf["encode_labels"] in ["encode", True]:
+    if encode_labels:
         session["label_encoder"] = LabelEncoder().fit(session["y"])
         session["y"] = session["label_encoder"].transform(session["y"])
         if verbose >= 1:
             info("Labels encoded")
         
     # Bag-of-words representation for input texts
-    if conf["preprocess"] in ["bag-of-words", "bow"]:
-        sw = load_stopwords(conf, verbose=verbose)
+    if preprocess == "bag-of-words":
+        sw = load_stopwords(stopwords, verbose=verbose)
         l = "Used bag-of-words"
-        if "stopwords" in conf:
+        if stopwords not in [[],"",None]:
             l += " with stopwords removed"
         elif verbose >= 1:
             l = "Used bag-of-words"
-        maxfts = None
-        if "max_features" in conf:
-            maxfts = conf["max_features"]
-        session["bow"] = CountVectorizer(stop_words=sw, max_features=maxfts).fit(session["X"]) #TODO: ngram_range=ngram
+        session["bow"] = CountVectorizer(stop_words=sw, max_features=max_features).fit(session["X"]) #TODO: ngram_range=ngram
         session["X"] = session["bow"].transform(session["X"])
         session["stopwords"] = sw
         
         # TF-IDF conversion for bag-of-words
-        if "TF-IDF" in conf and conf["TF-IDF"] or "tf-idf" in conf and conf["tf-idf"]:
+        if tf_idf:
             session["TF-IDF"] = TfidfTransformer().fit(session["X"])
             session["X"] = session["TF-IDF"].transform(session["X"])
             l += " and TF-IDF"
@@ -220,36 +235,36 @@ def load_data(file, Xcols=None, ycol=None, verbose=1, conf={}):
             info(l)
             
     # Word2vec
-    if conf["preprocess"] in ["word2vec", "wordtovec"]:
-        load_word2vec_data(session, conf, verbose=verbose)
+    if preprocess == "word2vec":
+        load_word2vec_data(session, w2v_vector_size, w2v_rebuild, stopwords, verbose=verbose)
         
     # Keras embeddings
-    if conf["preprocess"] in ["embeddings"]:
-        load_embeddings_data(session, conf, verbose=verbose)
+    if preprocess == "embeddings":
+        load_embeddings_data(session, embeddings_size, embeddings_max_length, stopwords, verbose=verbose)
     
     # One-hot encoding
-    if conf["preprocess"] in ["one-hot", "onehot", "one hot"]:
+    if preprocess == "one-hot":
         session["scaler"] = OneHotEncoder(handle_unknown="ignore").fit(session["X"])
         session["X"] = session["scaler"].transform(session["X"])
         if verbose >= 1:
             info("Transformed input data using one-hot encoding")
             
     # Ordinal encoding
-    if conf["preprocess"] in ["ordinal"]:
+    if preprocess == "ordinal":
         session["scaler"] = OrdinalEncoder().fit(session["X"])
         session["X"] = session["scaler"].transform(session["X"])
         if verbose >= 1:
             info("Transformed input data using ordinal encoding")
         
     # Standard scaler
-    if conf["preprocess"] == "scale":
+    if preprocess == "scale":
         session["scaler"] = StandardScaler().fit(session["X"])
         session["X"] = session["scaler"].transform(session["X"])
         if verbose >= 1:
             info("Scaled input data using standard scaler")
             
     # Normalize
-    if conf["preprocess"] == "normalize":
+    if preprocess == "normalize":
         session["scaler"] = Normalizer().fit(session["X"])
         session["X"] = session["scaler"].transform(session["X"])
         if verbose >= 1:
@@ -275,7 +290,7 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         return
     
     # Regression
-    if session["preprocess"] == "regression":
+    if session["mode"] == "regression":
         if type(session["y"]) == list:
             nex = len(session["y"])
         else:
@@ -399,44 +414,47 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
 #
 # Split data into train and test sets
 #
-def split_data(session, verbose=1, conf={}):
+def split_data(session,
+               test_size=0.2,
+               seed=None,
+               stratify=False,
+               verbose=1,
+              ):
     if session is None:
         error("Session is empty")
         return
     
+    # Check params
+    if not check_param(test_size, "test_size", [float], None): return
+    if not check_param(seed, "seed", [int,None], None): return
+    if not check_param(stratify, "stratify", [bool], None): return
+
     # Check test size
-    if "test_size" in conf:
-        test_size = conf["test_size"]
-    else:
-        conf["test_size"] = 0.2
-        warning(colored("test_size", "cyan") + " not set (using " + colored("0.2", "blue") + ")")
+    if test_size <= 0 or test_size >= 1:
+        test_size = 0.2
+        warning(colored("test_size", "cyan") + " must be between 0 and 1 (using " + colored("0.2", "blue") + ")")
         
     # Info string
-    s = "Split data using " + colored(f"{(1-conf['test_size'])*100:.0f}%", "blue") + " training data and " + colored(f"{(conf['test_size'])*100:.0f}%", "blue") + " test data"
+    s = "Split data using " + colored(f"{(1-test_size)*100:.0f}%", "blue") + " training data and " + colored(f"{(test_size)*100:.0f}%", "blue") + " test data"
     
     # Random seed
-    seed = None
-    if "seed" in conf:
-        seed = conf["seed"]
+    if seed is not None:
         s += " with seed " + colored(seed, "blue") 
         
     # Stratify
-    stratify = None
-    if "stratify" in conf and conf["stratify"]:
+    if stratify:
         stratify = session["y"]
         s += " and stratify"
     
     # Split data
-    X_train, X_test, y_train, y_test = train_test_split(session["X"], session["y"], test_size=conf["test_size"], random_state=seed, stratify=stratify)
+    X_train, X_test, y_train, y_test = train_test_split(session["X"], session["y"], test_size=test_size, random_state=seed, stratify=stratify)
     
     # Update session
     session["X_train"] = X_train
     session["X_test"] = X_test
     session["y_train"] = y_train
     session["y_test"] = y_test
-    if "mode" in session:
-        # Trigger reload
-        session["mode"] = ""
+    session["eval_mode"] = ""
     
     if verbose >= 1:
         info(s)
@@ -445,75 +463,57 @@ def split_data(session, verbose=1, conf={}):
 #
 # Sets resampling method to use
 #
-def set_resample(session, conf={}):
+def set_resample(session, 
+                 mode="u",
+                 max_samples=500,
+                 decrease_limit=0.5,
+                 min_samples=50,
+                 increase_limit=1.0,
+                 auto=False,
+                 seed=None,
+                ):
     if session is None:
         error("Session is empty")
         return
     
-    # Check mode parameter
-    if "mode" not in conf:
-        error("Missing parameter " + colored("mode", "cyan"))
-        return
-    if type(conf["mode"]) != str:
-        error("Resample mode must be a string")
-        return
-    
-    conf["mode"] = conf["mode"].lower()
-    for mode in list(conf["mode"]):
+    # Check params
+    if not check_param(mode, "mode", [str], None): return
+    for mode in list(mode):
         if mode not in ["o","u","s"]:
             error("Unsupported resample mode (must be " + colored("o", "cyan") + ", " + colored("u", "cyan") + " or " + colored("s", "cyan") + ")")
             return
-    if len(conf["mode"]) == 0:
+    if len(mode) == 0:
         error("Parameter " + colored("mode", "cyan") + " is empty")
         return
+    if not check_param(max_samples, "max_samples", [int], None): return
+    if not check_param(decrease_limit, "decrease_limit", [float,int], None): return
+    if not check_param(min_samples, "max_samples", [int], None): return
+    if not check_param(increase_limit, "decrease_limit", [float,int], None): return
+    if not check_param(auto, "auto", [bool], None): return
+    if not check_param(seed, "seed", [int,None], None): return
     
     session["resample"] = {
-        "mode": conf["mode"]
+        "mode": mode,
+        "seed": seed,
     }
-    for mode in list(conf["mode"]):
+    for mode in list(mode):
         if mode == "u":
-            if "max_samples" not in conf:
-                warning(colored("max_samples", "cyan") + " not set (using " + colored("500", "blue") + ")")
-                conf["max_samples"] = 500
-            if "decrease_limit" not in conf:
-                warning(colored("decrease_limit", "cyan") + " not set (using " + colored("0.5", "blue") + ")")
-                conf["decrease_limit"] = 0.5
-            session["resample"]["max_samples"] = conf["max_samples"]
-            session["resample"]["decrease_limit"] = conf["decrease_limit"]
-            info("Using random undersampling with max samples " + colored(conf["max_samples"], "blue") + " and decrease limit " + colored(conf["decrease_limit"], "blue"))
+            session["resample"]["max_samples"] = max_samples
+            session["resample"]["decrease_limit"] = decrease_limit
+            info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and decrease limit " + colored(decrease_limit, "blue"))
         elif mode == "o":
-            if "min_samples" not in conf:
-                warning(colored("min_samples", "cyan") + " not set (using " + colored("50", "blue") + ")")
-                conf["min_samples"] = 50
-            if "increase_limit" not in conf:
-                warning(colored("increase_limit", "cyan") + " not set (using " + colored("1.0", "blue") + ")")
-                conf["increase_limit"] = 1.0
-            session["resample"]["min_samples"] = conf["min_samples"]
-            session["resample"]["increase_limit"] = conf["increase_limit"]
-            info("Using random oversampling with min samples " + colored(conf["min_samples"], "blue") + " and increase limit " + colored(conf["increase_limit"], "blue"))
+            session["resample"]["min_samples"] = min_samples
+            session["resample"]["increase_limit"] = increase_limit
+            info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
         elif mode == "s":
-            if "auto" in conf and conf["auto"]:
+            if auto:
                 session["resample"]["auto"] = 1
                 info("Using auto SMOTE oversampling")
             else:
-                if "min_samples" not in conf:
-                    warning(colored("min_samples", "cyan") + " not set (using " + colored("50", "blue") + ")")
-                    conf["min_samples"] = 50
-                if "increase_limit" not in conf:
-                    warning(colored("increase_limit", "cyan") + " not set (using " + colored("1.0", "blue") + ")")
-                    conf["increase_limit"] = 1.0
-                session["resample"]["min_samples"] = conf["min_samples"]
-                session["resample"]["increase_limit"] = conf["increase_limit"]
-                info("Using SMOTE oversampling with min samples " + colored(conf["min_samples"], "blue") + " and increase limit " + colored(conf["increase_limit"], "blue"))
-          
-    if "seed" in conf:
-        session["resample"]["seed"] = conf["seed"]
-    else:
-        session["resample"]["seed"] = None
-        
-    # Reset mode to rebuild model
-    if "mode" in session:
-        session["mode"] = ""
+                session["resample"]["min_samples"] = min_samples
+                session["resample"]["increase_limit"] = increase_limit
+                info("Using SMOTE oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
+    session["eval_mode"] = ""
         
         
 # 
@@ -531,25 +531,15 @@ def clear_resample(session):
 # Wraps a Keras model to have the same functions as a sklearn model.
 #
 class KerasWrapper:
-    def __init__(self, model, conf):
+    def __init__(self, model, epochs, batch_size, loss, optimizer):
         self.model = model
         self.fitted = False
-        # Check params
-        if "epochs" not in conf:
-            warning(colored("epochs", "cyan") + " not set (using " + colored("5", "blue") + ")")
-            conf["epochs"] = 5
-        if "batch_size" not in conf:
-            warning(colored("batch_size", "cyan") + " not set (using " + colored("32", "blue") + ")")
-            conf["batch_size"] = 32
-        if "loss" not in conf:
-            warning(colored("loss", "cyan") + " not set (using " + colored("categorical_crossentropy", "blue") + ")")
-            conf["loss"] = "categorical_crossentropy"
-        if "optimizer" not in conf:
-            warning(colored("optimizer", "cyan") + " not set (using " + colored("adam", "blue") + ")")
-            conf["optimizer"] = "adam"
-        self.conf = conf
+        self.epochs = epochs
+        self.batch_size = batch_size
+        self.loss = loss
+        self.optimizer = optimizer
         self.nout = self.model.layers[-1].output_shape[1]
-
+        
     # Train Keras model
     def fit(self, X, y):
         if type(y[0]) == str:
@@ -566,10 +556,10 @@ class KerasWrapper:
             X = np.asarray(np.asarray([xi for xi in X]))
         
         # Compile model
-        self.model.compile(loss=self.conf["loss"], optimizer=self.conf["optimizer"], metrics=["accuracy"])
+        self.model.compile(loss=self.loss, optimizer=self.optimizer, metrics=["accuracy"])
 
         # Train model
-        self.model.fit(X, y, epochs=self.conf["epochs"], batch_size=self.conf["batch_size"], verbose=0)
+        self.model.fit(X, y, epochs=self.epochs, batch_size=self.batch_size, verbose=0)
         self.fitted = True
       
     # Predict with Keras model
@@ -606,7 +596,24 @@ class KerasWrapper:
 #
 # Builds and evaluates model
 #
-def evaluate_model(model, session, reload=False, conf={}):
+def evaluate_model(model, 
+                   session, 
+                   reload=False, 
+                   mode="all",
+                   seed=None,
+                   top_n=None,
+                   categories=False,
+                   max_categories=None,
+                   sidx=0,
+                   max_errors=None,
+                   confusionmatrix=False,
+                   cm_norm=None,
+                   epochs=5,
+                   batch_size=32,
+                   loss="categorical_crossentropy",
+                   optimizer="adam",
+                   ):
+    # Check params
     if session is None:
         error("Session is empty")
         return
@@ -616,21 +623,27 @@ def evaluate_model(model, session, reload=False, conf={}):
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
+    if not check_param(mode, "mode", [str], None): return None
+    if not check_param(seed, "seed", [int,None], None): return None
+    if not check_param(top_n, "top_n", [int,None], None): return None
+    if not check_param(categories, "categories", [bool], None): return None
+    if not check_param(max_categories, "max_categories", [int,None], None): return None
+    if not check_param(max_errors, "max_errors", [int,None], None): return None
+    if not check_param(sidx, "sidx", [int], None): return None
+    if not check_param(confusionmatrix, "confusionmatrix", [bool], None): return None
+    if not check_param(cm_norm, "cm_norm", [str,None], ["true","pred","all",None]): return None
+    if not check_param(epochs, "epochs", [int], None): return None
+    if not check_param(batch_size, "batch_size", [int], None): return None
     
     # Check if we have a Keras model
     if "keras." in str(type(model)):
-        model = KerasWrapper(model, conf)
+        model = KerasWrapper(model, epochs=epochs, batch_size=batch_size, loss=loss, optimizer=optimizer)
         if model.nout > 1 and model.nout != session["categories"]:
             error("Keras model outputs " + colored(f"{model.nout}", "blue") + " does not match " + colored(f"{session['categories']}", "blue") + " categories")
             return
-    
-    # Check mode param
-    if "mode" not in conf:
-        conf["mode"] = "all"
-        warning(colored("mode", "cyan") + " not set (using " + colored("all", "blue") + ")")
         
     # Check if rebuild model
-    if "mode" in conf and "mode" in session and conf["mode"] != session["mode"]:
+    if "eval_mode" in session and mode != session["eval_mode"]:
         reload = True
     if "modelid" in session and session["modelid"] != str(model):
         reload = True
@@ -640,14 +653,14 @@ def evaluate_model(model, session, reload=False, conf={}):
         #
         # Cross-validation
         #
-        if conf["mode"].lower().startswith("cv"):
+        if mode.lower().startswith("cv"):
             st = time.time()
             cv = 5
-            if len(conf["mode"]) > 2:
-                if "-" in conf["mode"]: 
-                    cv = int(conf["mode"].split("-")[1])
-                elif " " in conf["mode"]:
-                    cv = int(conf["mode"].split(" ")[1])
+            if len(mode) > 2:
+                if "-" in mode: 
+                    cv = int(mode.split("-")[1])
+                elif " " in mode:
+                    cv = int(mode.split(" ")[1])
                 else:
                     error("Cross validation mode must be " + colored("CV", "cyan") + ", " + colored("CV-#", "cyan") + " or " + colored("CV #", "cyan"))
                     return
@@ -661,8 +674,8 @@ def evaluate_model(model, session, reload=False, conf={}):
                     return clone(_model, safe=True)
             
             # Get folds
-            if "seed" in conf:
-                cvm = KFold(n_splits=cv, random_state=conf["seed"], shuffle=True)
+            if seed is not None:
+                cvm = KFold(n_splits=cv, random_state=seed, shuffle=True)
             else:
                 cvm = KFold(n_splits=cv, shuffle=False)
                 
@@ -692,10 +705,7 @@ def evaluate_model(model, session, reload=False, conf={}):
                 y_actual += list(y_test)
                 
                 # Top n result
-                if "top_n" in conf:
-                    if (type(conf["top_n"]) != int) or conf["top_n"] < 2:
-                        warning("Invalid value for " + colored("top_n", "cyan") + ". Using " + colored("5", "blue"))
-                        conf["top_n"] = 5
+                if top_n is not None:
                     if hasattr(model, "predict_proba"):
                         model_ccv = model_obj
                     else:
@@ -704,8 +714,8 @@ def evaluate_model(model, session, reload=False, conf={}):
                         if hasattr(model, "predict_proba"):
                             Xi = [Xi]
                         probs = model_ccv.predict_proba(Xi)
-                        best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
-                        best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
+                        best_codes = np.argsort(-probs, axis=1)[:,:top_n][0]
+                        best_prob = np.sort(-probs, axis=1)[:,:top_n][0]
                         codes = model_ccv.classes_
                         ypn = False
                         for i,c in enumerate(best_codes):
@@ -718,9 +728,9 @@ def evaluate_model(model, session, reload=False, conf={}):
     
             session["y_pred"] = y_pred
             session["y_actual"] = y_actual
-            if "top_n" in conf:
+            if top_n is not None:
                 session["y_pred_topn"] = y_pred_topn
-                session["top_n"] = conf["top_n"]
+                session["top_n"] = top_n
             
             en = time.time()
             print(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
@@ -728,7 +738,7 @@ def evaluate_model(model, session, reload=False, conf={}):
         #
         # Train-test split
         #
-        elif conf["mode"].lower() in ["train-test", "split"]:
+        elif mode in ["train-test", "split"]:
             st = time.time()
             if "X_train" not in session or "y_train" not in session:
                 error("Data must be split using function " + colored("split_data()", "cyan") + " before evaluating model using train-test split")
@@ -743,19 +753,16 @@ def evaluate_model(model, session, reload=False, conf={}):
             session["y_actual"] = session["y_test"]
             
             # Top n result
-            if "top_n" in conf:
+            if top_n is not None:
                 y_pred_topn = []
-                if (type(conf["top_n"]) != int) or conf["top_n"] < 2:
-                    warning("Invalid value for " + colored("top_n", "cyan") + ". Using " + colored("5", "blue"))
-                    conf["top_n"] = 5
                 if hasattr(model, "predict_proba"):
                     model_ccv = model
                 else:
                     model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(X_train, y_train)
                 for Xi,yi in zip(session["X_test"], session["y_test"]):
                     probs = model_ccv.predict_proba([Xi])
-                    best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
-                    best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
+                    best_codes = np.argsort(-probs, axis=1)[:,:top_n][0]
+                    best_prob = np.sort(-probs, axis=1)[:,:top_n][0]
                     codes = model_ccv.classes_
                     ypn = False
                     for i,c in enumerate(best_codes):
@@ -766,15 +773,16 @@ def evaluate_model(model, session, reload=False, conf={}):
                     else:
                         y_pred_topn.append(codes[best_codes[0]])
                 session["y_pred_topn"] = y_pred_topn
-                session["top_n"] = conf["top_n"]
+                session["top_n"] = top_n
                 
             en = time.time()
+            mode = "split"
             print("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
             
         #
         # All data
         #
-        elif conf["mode"].lower() in ["all", ""]:
+        elif mode.lower() in ["all", ""]:
             st = time.time()
             X = session["X"]
             y = session["y"]
@@ -787,19 +795,16 @@ def evaluate_model(model, session, reload=False, conf={}):
             session["y_actual"] = y
             
             # Top n result
-            if "top_n" in conf:
+            if top_n is not None:
                 y_pred_topn = []
-                if (type(conf["top_n"]) != int) or conf["top_n"] < 2:
-                    warning("Invalid value for " + colored("top_n", "cyan") + ". Using " + colored("5", "blue"))
-                    conf["top_n"] = 5
                 if hasattr(model, "predict_proba"):
                     model_ccv = model
                 else:
                     model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(X, y)
                 for Xi,yi in zip(session["X"], session["y"]):
                     probs = model_ccv.predict_proba([Xi])
-                    best_codes = np.argsort(-probs, axis=1)[:,:conf["top_n"]][0]
-                    best_prob = np.sort(-probs, axis=1)[:,:conf["top_n"]][0]
+                    best_codes = np.argsort(-probs, axis=1)[:,:top_n][0]
+                    best_prob = np.sort(-probs, axis=1)[:,:top_n][0]
                     codes = model_ccv.classes_
                     ypn = False
                     for i,c in enumerate(best_codes):
@@ -810,16 +815,16 @@ def evaluate_model(model, session, reload=False, conf={}):
                     else:
                         y_pred_topn.append(codes[best_codes[0]])
                 session["y_pred_topn"] = y_pred_topn
-                session["top_n"] = conf["top_n"]
+                session["top_n"] = top_n
             
             en = time.time()
+            mode = "all"
             print("Building and evaluating model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
-            conf["mode"] = "all"
         else:
-            warning("Invalid mode " + colored(conf["mode"], "cyan"))
+            warning("Invalid mode " + colored(mode, "cyan"))
             return
             
-        session["mode"] = conf["mode"]
+        session["eval_mode"] = mode
         session["modelid"] = str(model)
     
     # Error check
@@ -830,7 +835,7 @@ def evaluate_model(model, session, reload=False, conf={}):
         return
     
     # Results (regression)
-    if session["preprocess"] == "regression":
+    if session["mode"] == "regression":
         t = CustomizedTable(["Results", ""])
         t.column_style(1, {"color": "value", "num-format": "int-2"})
         t.add_row(["R^2 score:", float(r2_score(session["y_actual"], session["y_pred"]))])
@@ -854,7 +859,7 @@ def evaluate_model(model, session, reload=False, conf={}):
         t.display()
         
         # Results per category
-        if "categories" in conf and conf["categories"]:
+        if categories:
             # Generate sorted list of category results
             cats = np.unique(session["y_actual"])
             cm = confusion_matrix(session["y_actual"], session["y_pred"])
@@ -876,13 +881,9 @@ def evaluate_model(model, session, reload=False, conf={}):
             t.column_style(0, {"color": "#048512"})
             t.column_style(1, {"color": "percent", "num-format": "pct-2"})
             t.column_style(2, {"color": "value"})
-            sidx = 0
-            maxcats = len(tmp)
-            if "sidx" in conf:
-                sidx = conf["sidx"]
-            if "max_categories" in conf:
-                maxcats = conf["max_categories"]
-            for r in tmp[sidx:sidx+maxcats]:
+            if max_categories in [-1,0,None]:
+                max_categories = len(tmp)
+            for r in tmp[sidx:sidx+max_categories]:
                 cat = r[1]
                 if "label_encoder" in session:
                     l = session["label_encoder"].inverse_transform([cat])[0]
@@ -893,8 +894,9 @@ def evaluate_model(model, session, reload=False, conf={}):
                 t.add_row(row, style={"border": "top", "background": "#eee"})
                 if len(r[3]) > 0:
                     errs = sorted(r[3], reverse=True)
-                    if "max_errors" in conf:
-                        errs = errs[:conf["max_errors"]]
+                    if max_errors in [-1,0,None]:
+                        max_errors = len(errs)
+                    errs = errs[:max_errors]
                     for err in errs:
                         ecat = err[1]
                         if "label_encoder" in session:
@@ -912,18 +914,15 @@ def evaluate_model(model, session, reload=False, conf={}):
             t.display()
 
         # Confusion matrix
-        if "confusion_matrix" in conf and conf["confusion_matrix"]:
+        if confusionmatrix:
             print()
-            norm = None
-            if type(conf["confusion_matrix"]) == str:
-                norm = conf["confusion_matrix"]
             labels = None
             if "label_encoder" in session:
                 labels = []
                 for cat in cats:
                     l = session["label_encoder"].inverse_transform([cat])[0]
                     labels.append(f"{l} ({cat})")
-            ConfusionMatrixDisplay.from_predictions(session["y_actual"], session["y_pred"], normalize=norm, xticks_rotation="vertical", cmap="inferno", values_format=".2f", colorbar=False, display_labels=labels)
+            ConfusionMatrixDisplay.from_predictions(session["y_actual"], session["y_pred"], normalize=cm_norm, xticks_rotation="vertical", cmap="inferno", values_format=".2f", colorbar=False, display_labels=labels)
             plt.show()
     
     print()
@@ -932,7 +931,15 @@ def evaluate_model(model, session, reload=False, conf={}):
 #
 # Builds final model
 #
-def build_model(model, session, conf={}):
+def build_model(model, 
+                session, 
+                mode="all",
+                epochs=5,
+                batch_size=32,
+                loss="categorical_crossentropy",
+                optimizer="adam",
+                seed=None,
+               ):
     if session is None:
         error("Session is empty")
         return
@@ -942,14 +949,16 @@ def build_model(model, session, conf={}):
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
-    if "mode" not in conf:
-        conf["mode"] = "all"
+    if not check_param(mode, "mode", [str], None): return None
+    if not check_param(seed, "seed", [int,None], None): return None
+    if not check_param(epochs, "epochs", [int], None): return None
+    if not check_param(batch_size, "batch_size", [int], None): return None
         
     # Check if we have a Keras model
     if "keras." in str(type(model)):
-        model = KerasWrapper(model, conf)
+        model = KerasWrapper(model, epochs=epochs, batch_size=batch_size, loss=loss, optimizer=optimizer)
     
-    if conf["mode"] in ["train-test", "split"]:
+    if mode in ["train-test", "split"]:
         if "X_train" not in session or "y_train" not in session:
             error("Building final model with mode " + colored("split", "cyan") + " requires splitting data with " + colored("split_data()", "cyan"))
             return
@@ -963,11 +972,11 @@ def build_model(model, session, conf={}):
         y_pred = model.predict(X)
         session["model"] = model
         en = time.time()
-        if session["preprocess"] == "regression":
+        if session["mode"] == "regression":
             info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec (MAE " + colored(f"{float(mean_absolute_error(y, y_pred)):.2f}", "blue") + ")")
         else:
             info("Building final model on training data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
-    elif conf["mode"] in ["all", ""]:
+    elif mode in ["all", ""]:
         st = time.time()
         X = session["X"]
         y = session["y"]
@@ -978,12 +987,12 @@ def build_model(model, session, conf={}):
         y_pred = model.predict(X)
         session["model"] = model
         en = time.time()
-        if session["preprocess"] == "regression":
+        if session["mode"] == "regression":
             info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec (MAE " + colored(f"{float(mean_absolute_error(y, y_pred)):.2f}", "blue") + ")")
         else:
             info("Building final model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec (accuracy " + colored(f"{float(accuracy_score(y, y_pred))*100:.2f}%", "blue") + ")")
     else:
-        error("Invalid mode " + colored(conf["mode"], "cyan"))
+        error("Invalid mode " + colored(mode, "cyan"))
 
 
 #
@@ -1140,12 +1149,12 @@ def predict(xi, session):
         return
     
     # Error checks
-    if type(xi) == str and session["preprocess"] not in ["bag-of-words", "bow", "word2vec", "wordtovec", "embeddings"]:
+    if type(xi) == str and session["preprocess"] not in ["bag-of-words", "word2vec", "embeddings"]:
         error("Example is text but no text preprocessing is specified")
         return
     
     # Bag of words
-    if type(xi) == str and session["preprocess"] in ["bag-of-words", "bow"]:
+    if type(xi) == str and session["preprocess"] == "bag-of-words":
         X = session["bow"].transform([xi])
         if "tf-idf" in session:
             X = session["tf-idf"].transform(X)
@@ -1157,7 +1166,7 @@ def predict(xi, session):
         return
     
     # Word2vec
-    if type(xi) == str and session["preprocess"] in ["word2vec", "wordtovec"]:
+    if type(xi) == str and session["preprocess"] == "word2vec":
         X = [word_vector(xi, session)]
         pred = session["model"].predict(X)
         res = pred[0]
@@ -1167,7 +1176,7 @@ def predict(xi, session):
         return
     
     # Embeddings
-    if type(xi) == str and session["preprocess"] in ["embeddings"]:
+    if type(xi) == str and session["preprocess"] == "embeddings":
         X = embedding(xi, session)
         pred = session["model"].predict(X)
         res = pred[0]
@@ -1183,7 +1192,7 @@ def predict(xi, session):
         res = pred[0]
         if "label_encoder" in session:
             res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
-        if session["preprocess"] == "regression" and type(res) in [float, np.float64]:
+        if session["mode"] == "regression" and type(res) in [float, np.float64]:
             if not float(res).is_integer():
                 res = round(res, 2)
         info("Example is predicted as " + colored(res, "green"))
@@ -1194,7 +1203,7 @@ def predict(xi, session):
     res = pred[0]
     if "label_encoder" in session:
         res = f"{session['label_encoder'].inverse_transform([res])[0]} ({res})"
-    if session["preprocess"] == "regression" and type(res) in [float, np.float64]:
+    if session["mode"] == "regression" and type(res) in [float, np.float64]:
         if not float(res).is_integer():
             res = round(res, 2)
     info("Example is predicted as " + colored(res, "green"))

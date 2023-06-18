@@ -9,26 +9,10 @@ from collections import Counter
 #
 # Plot numerical/nominal features
 #
-def plot_data(session, conf={}):
+def plot_data(session, mode="", horizontal=True, category=None, lim=None, table=True, plot=True, size=(14,6)):
     if session is None:
         error("Session is empty")
         return
-    
-    # Check config
-    if "mode" not in conf:
-        conf["mode"] = ""
-    if "horizontal" not in conf:
-        conf["horizontal"] = True,
-    if "category" not in conf:
-        conf["category"] = None
-    if "lim" not in conf:
-        conf["lim"] = None
-    if "table" not in conf:
-        conf["table"] = True
-    if "plot" not in conf:
-        conf["plot"] = True
-    if "size" not in conf:
-        conf["size"] = (14,6)
     
     # Placeholder for numerical features
     num_data = {
@@ -46,14 +30,14 @@ def plot_data(session, conf={}):
     
     # Use original or preprocessed data
     key = "X_original"
-    if conf["mode"] in ["scale", "scaled"]:
+    if mode in ["scale", "scaled"]:
         key = "X"
     
     # Categories to include
-    if conf["category"] is None:
+    if category is None:
         cats = set(np.unique(session["y_original"]))
     else:
-        cats = set([conf["category"]])
+        cats = set([category])
     
     # Iterate over features
     for i,col in enumerate(session["columns"]):
@@ -67,7 +51,7 @@ def plot_data(session, conf={}):
             num_data["values"].append([xi[i] for xi,yi in zip(session[key],session["y_original"]) if yi in cats])
     
     # Table (numerical features)
-    if len(num_data["series"]) > 0 and conf["table"]:
+    if len(num_data["series"]) > 0 and table:
         t = CustomizedTable(["Feature<br><font style='font-weight: normal'>(numerical)</font>", "Mean", "Median", "Min", "Max", "Stdev"])
         t.column_style(0, {"color": "name"})
         t.column_style([1,2,3,4,5], {"color": "value", "num-format": "dec-4"})
@@ -86,11 +70,11 @@ def plot_data(session, conf={}):
         
     # Title
     title = None
-    if conf["category"] is not None:
-        title = conf["category"]
+    if category is not None:
+        title = category
         
     # Table (nominal features)
-    if len(nom_data["series"]) > 0 and conf["table"]:
+    if len(nom_data["series"]) > 0 and table:
         t = CustomizedTable(["Feature<br><font style='font-weight: normal'>(nominal)</font>", "Values (occurences)"])
         t.column_style(0, {"color": "name"})
         for label,vals in zip(nom_data["series"], nom_data["values"]):
@@ -111,7 +95,7 @@ def plot_data(session, conf={}):
         print()
     
     # Show plot for numerical features
-    if len(num_data["series"]) > 0 and conf["plot"]:
+    if len(num_data["series"]) > 0 and plot:
         box_plot(num_data, opts={
             "grid": True,
             "font": "Verdana",
@@ -119,17 +103,17 @@ def plot_data(session, conf={}):
             "fontsize": 10,
             "labels_fontsize": 10,
             "labels_color": "#b40403",
-            "horizontal": conf["horizontal"],
+            "horizontal": horizontal,
             "title": title,
-            "size": conf["size"],
-            "lim": conf["lim"],
+            "size": size,
+            "lim": lim,
         })
     
     
 #
 # Plot numerical/nominal features per category
 #
-def plot_data_per_category(session, conf={}):
+def plot_data_per_category(session, mode=""):
     if session is None:
         error("Session is empty")
         return
@@ -139,13 +123,9 @@ def plot_data_per_category(session, conf={}):
         error("Plot data per category requires classification")
         return
     
-    # Check config
-    if "mode" not in conf:
-        conf["mode"] = ""
-    
     # Use original or preprocessed data
     key = "X_original"
-    if conf["mode"] in ["scale", "scaled"]:
+    if mode in ["scale", "scaled"]:
         key = "X"
     
     nom = False
@@ -170,10 +150,10 @@ def plot_data_per_category(session, conf={}):
         # Categories
         cats = np.unique(session["y_original"])
         for cat in cats:
-            plot_data(session, conf={"category": cat, "table": False, "size": (10,4), "lim": (np.min(vals)-0.1,np.max(vals)+0.1), "mode": conf["mode"]})
+            plot_data(session, category=cat, table=False, size=(10,4), lim=(np.min(vals)-0.1,np.max(vals)+0.1), mode=mode)
             
     if nom:
         # Categories
         cats = np.unique(session["y_original"])
         for cat in cats:
-            plot_data(session, conf={"category": cat, "plot": False})
+            plot_data(session, category=cat, plot=False)

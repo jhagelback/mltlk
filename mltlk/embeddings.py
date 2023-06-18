@@ -7,17 +7,12 @@ import time
 #
 # Load and preprocess Keras embeddings data
 #
-def load_embeddings_data(session, conf, verbose=1):
-    # Check settings
-    if "embeddings_size" not in conf:
-        warning(colored("embeddings_size", "cyan") + " not set (using " + colored("75", "blue") + ")")
-        conf["embeddings_size"] = 75
-        
+def load_embeddings_data(session, embeddings_size, max_length, stopwords, verbose=1):
     from tensorflow.keras.preprocessing.sequence import pad_sequences
     from tensorflow.keras.preprocessing.text import Tokenizer
 
     # Stopwords
-    sw = load_stopwords(conf, verbose=verbose)
+    sw = load_stopwords(stopwords, verbose=verbose)
     if sw is None:
         sw = set()
     else:
@@ -44,12 +39,12 @@ def load_embeddings_data(session, conf, verbose=1):
     if verbose >= 1:
         info(f"Vocabulary size is " + colored(f"{vocab_size}", "blue"))
     
-    if "max_length" not in conf or conf["max_length"] is None:
+    if max_length is None:
         maxlen = max([len(xi) for xi in X])
         if verbose >= 1:
             info("Max length not set, using max length "  + colored(f"{maxlen}", "blue") + " from input examples")
     else:
-        maxlen = conf["max_length"]
+        maxlen = max_length
     
     # Check how many examples that are covered by padding sequences on the specified number of words limit
     if verbose >= 1:
@@ -62,7 +57,7 @@ def load_embeddings_data(session, conf, verbose=1):
 
     # Update session
     session["X"] = X
-    session["embeddings_size"] = conf["embeddings_size"]
+    session["embeddings_size"] = embeddings_size
     session["max_length"] = maxlen
     session["vocab_size"] = vocab_size
     

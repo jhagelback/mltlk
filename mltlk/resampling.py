@@ -70,7 +70,7 @@ def smote_oversampling(session, X, y):
 #
 # Resample training data
 #
-def resample(session, X, y, verbose=1, conf={}):
+def resample(session, X, y, verbose=1):
     # Check training set size before resampling
     if type(X) == list:
         x_orig = len(X)

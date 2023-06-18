@@ -30,6 +30,25 @@ def info(e):
 
 
 #
+# Checks type and value of a parameter
+#
+def check_param(p, pname, types, vals):
+    if types not in [None, []]:
+        if type(types) != list:
+            types = [types]
+        if (p is not None and type(p) not in types) or (p is None and None not in types):
+            error("invalid type for param " + colored(pname, "yellow") + " (" + colored(", ".join([str(x) for x in types]), "blue") + ")")
+            return False
+    if vals not in [None, []]:
+        if type(vals) != list:
+            vals = [vals]
+        if p not in vals:
+            error("Invalid value for param " + colored(pname, "yellow") + " (" + colored(", ".join([str(x) for x in vals]), "blue") + ")")
+            return False
+    return True
+
+
+#
 # Converts a date-time string to timestamp
 #
 def str_to_timestamp(tsstr, mode="from"):
@@ -77,19 +96,19 @@ def timestamp_to_str(ts):
 #
 # Load stopwords
 #
-def load_stopwords(conf, verbose=1):
+def load_stopwords(stopwordslist, verbose=1):
     # Check if no stopwords
-    if "stopwords" not in conf or conf["stopwords"] is None:
+    if stopwordslist in [None, "", []]:
         return None
     
     # Convert to list (if string)
-    if type(conf["stopwords"]) == str:
-        conf["stopwords"] = [conf["stopwords"]]
+    if type(stopwordslist) == str:
+        stopwordslist = [stopwordslist]
         
     # Iterate over stopwords
     stopwrds = []
     l = ""
-    for e in conf["stopwords"]:
+    for e in stopwordslist:
         try:
             stopwrds += stopwords.words(e)
             l += f"{e}, "
