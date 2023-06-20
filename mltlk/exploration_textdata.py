@@ -12,10 +12,17 @@ cache_topcats = {}
 cache_overlap = {}
 
 
-#
-# Builds a corpus from text data
-#
 def build_corpus(session):
+    """
+    Builds a corpus from the words in a text dataset.
+
+    Args:
+        session: Session object (created in load_data())
+        
+    Returns:
+        Corpus object
+    """
+    
     if session is None:
         error("Session is empty")
         return None
@@ -101,10 +108,22 @@ def build_corpus(session):
     return corpus
 
 
-#
-# Show top words in the corpus
-#
 def top_words(corpus, n=10, sidx=0, ncats=10):
+    """
+    Shows a table with the most frequent words in the corpus.
+
+    Args:
+        corpus: Corpus object (created in build_corpus())
+        n (int(: number of top words to show (default: 10)
+        sidx (int): Start index of the first word in the list (default: 0)
+        ncats (int): Number of categories to show for each word (default: 10)
+    """
+    
+    # Check params
+    if not check_param(corpus, "corpus", [dict], expr=corpus is not None, expr_msg="corpus is None"): return
+    if not check_param(n, "n", [int], expr=n>=1, expr_msg="n must be at least 1"): return None
+    if not check_param(ncats, "ncats", [int], expr=ncats>=1, expr_msg="ncats must be at least 1"): return None
+    
     global cache_topcats
     
     # Convert data
@@ -113,7 +132,7 @@ def top_words(corpus, n=10, sidx=0, ncats=10):
         incats = len(corpus["words_in_category"][wrdcnt[0]])
         tab.append(wrdcnt + [f"{incats} ({incats/len(corpus['categories'])*100:.1f}%)"])
     
-    # No to categories to show
+    # No top categories to show
     tcats = ncats
     if len(corpus["categories"]) < ncats:
         tcats = len(corpus["categories"])
@@ -152,10 +171,19 @@ def top_words(corpus, n=10, sidx=0, ncats=10):
     print()
 
 
-#
-# Check overlapping words between two categories
-#
 def overlap(corpus, cat1, cat2):
+    """
+    Calculates the amount of overlapping words between two categories.
+
+    Args:
+        corpus: Corpus object (created in build_corpus())
+        cat1 (int or str): First category
+        cat2 (int or str): Second cateogry
+    """
+    
+    # Check params
+    if not check_param(corpus, "corpus", [dict], expr=corpus is not None, expr_msg="corpus is None"): return
+    
     wrds1 = set(corpus["words_per_category"][cat1])
     wrds2 = set(corpus["words_per_category"][cat2])
     tot = wrds1.union(wrds2)
@@ -176,10 +204,22 @@ def overlap(corpus, cat1, cat2):
     print()
     
 
-#
-# Check overlapping words between all categories
-#
 def overlap_all_categories(corpus, n=10, sidx=0, similarity="jaccard"):
+    """
+    Calculates the amount of overlapping words between all categories and shows a table with the top overlapping categories.
+
+    Args:
+        corpus: Corpus object (created in build_corpus())
+        n (int): Number of categories to show in the table (default: 10)
+        sidx (int): Index of the first category to show in the table. If negative, the least overlapping categories are shown (default: 0)
+        similarity (str): Specifies the similarity measure to use: 'jaccard' or 'overlap' (default: 'jaccard') 
+    """
+    
+    # Check params
+    if not check_param(corpus, "corpus", [dict], expr=corpus is not None, expr_msg="corpus is None"): return
+    if not check_param(n, "n", [int], expr=n>=1, expr_msg="n must be at least 1"): return None
+    if not check_param(similarity, "similarity", [str], vals=["jaccard", "overlap"]): return None
+    
     global cache_overlap
     similarity = similarity.lower()
     

@@ -11,10 +11,21 @@ from os import mkdir
 import gzip
 
 
-#
-# Load or build Word2vec model
-#
 def load_word2vec_model(session, w2v_vector_size, rebuild, stopwords, verbose=1):
+    """
+    Builds a word2vec model, or loads a previously built model.
+
+    Args:
+        session: Session object (created in load_data())
+        w2v_vector_size (int): Size of word vectors
+        rebuild (bool): Set to True if force rebuild word2vec model
+        stopwords (str, list or None): Lists of stopwords to be used for text pre-processing. Can be either languages (from the nltk.corpus package) or paths to csv files, for example ['english', 'data/custom_stopwords.csv']. If None, no stopwords will be used (default: None)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+        
+    Returns:
+        Word2vec model
+    """
+    
     # Check if path exists
     fpath = "word2vec"
     if not exists(fpath):
@@ -72,10 +83,21 @@ def load_word2vec_model(session, w2v_vector_size, rebuild, stopwords, verbose=1)
     return wtovec
 
 
-#
-# Load and preprocess Word2Vec word vectors data
-#
 def load_word2vec_data(session, w2v_vector_size, rebuild, stopwords, verbose=1):
+    """
+    Loads and pre-processes word2vec vectors for the loaded text data.
+
+    Args:
+        session: Session object (created in load_data())
+        w2v_vector_size (int): Size of word vectors
+        rebuild (bool): Set to True if force rebuild word2vec model
+        stopwords (str, list or None): Lists of stopwords to be used for text pre-processing. Can be either languages (from the nltk.corpus package) or paths to csv files, for example ['english', 'data/custom_stopwords.csv']. If None, no stopwords will be used (default: None)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+        
+    Returns:
+        Word2vec word vectors data
+    """
+    
     # Check if path exists
     fpath = "word2vec"
     if not exists(fpath):
@@ -126,10 +148,18 @@ def load_word2vec_data(session, w2v_vector_size, rebuild, stopwords, verbose=1):
         info("Word2vec embeddings generated in " + colored(f"{end-start:.2f}", "blue") + " sec")
 
         
-#
-# Create word vector for example
-#
 def word_vector(xi, session):
+    """
+    Creates a word vector for an example.
+
+    Args:
+        xi: The example of text data
+        session: Session object (created in load_data())
+        
+    Returns:
+        Word2vec vector for the example
+    """
+    
     # Get vector size
     if type(session["X"][0]) == list:
         size = len(session["X"][0])

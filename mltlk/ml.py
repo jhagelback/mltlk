@@ -33,9 +33,6 @@ from .word2vec import *
 from .embeddings import *
 
 
-#
-# Load and pre-process data
-#
 def load_data(file, 
               Xcols=None, 
               ycol=None,
@@ -54,25 +51,51 @@ def load_data(file,
               embeddings_size=75,
               embeddings_max_length=None,
               verbose=1):
+    """
+    Loads and pre-processes a data file and returns a session.
+
+    Args:
+        Xcols (list, range or None): Indexes of columns in the csv to be used as input features, for example [0,1,2]. If None, all columns except the last will be used as features (default: None)
+        ycol (int or None): Index of the column in the csv to be used as category. If None, the last column will be used as category (default: None)
+        mode (str): Type of target - 'classification' or 'regression' (default: 'classification')
+        preprocess (str or None): Pre-processing to use: 'normalize', 'scale', 'one-hot', 'ordinal', 'bag-of-words', 'word2vec', 'embeddings' or None. If None, no pre-processing will be used (default: None)
+        shuffle_data (bool): True if data shall be shuffled (default: False)
+        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
+        min_samples (int or None): Set if minority categories (categories with less than min_samples examples) shall be removed. If None, all categories will be included (default: None)
+        encode_labels (bool): True if category labels shall be encoded as integers (default: False)
+        clean_text (str or None): When cleaning text data, set if only letters ('letters') or both letters and digits ('letters digits') shall remain in the text. If None, no cleaning will be used (default: 'letters digits')
+        stopwords (str, list or None): Lists of stopwords to be used for text pre-processing. Can be either languages (from the nltk.corpus package) or paths to csv files, for example ['english', 'data/custom_stopwords.csv']. If None, no stopwords will be used (default: None)
+        max_features (int or None): Max features to be used for bag-of-words text pre-processing. If None, all features will be used (default: None)
+        tf_idf (bool): True if TF-IDF shall be used for bag-of-words text pre-processing (default: True)
+        w2v_vector_size (int): Size of word vectors for word2vec text pre-processing (default: 75)
+        w2v_rebuild (bool): Set if previously stored word2vec model, if found, shall be loaded (False) or if the model shall be rebuilt (True) (default: False)
+        embeddings_size (int): Size of word vectors for embeddings pre-processing (default: 75)
+        embeddings_max_length (int or None): Max size of word vectors for embeddings pre-processing. If none, word vectors will not be cut (default: None)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+
+    Returns:
+        session: Session object.
+    """
     session = {}
     
     # Check params
-    if not check_param(mode, "mode", [str], ["classification", "regression"]): return None
+    if not check_param(mode, "mode", [str], vals=["classification", "regression"]): return None
     session["mode"] = mode
-    if not check_param(preprocess, "preprocess", [str,None], ["normalize", "scale", "one-hot", "ordinal", "bag-of-words", "word2vec", "embeddings", None]): return None
+    if not check_param(preprocess, "preprocess", [str,None], vals=["normalize", "scale", "one-hot", "ordinal", "bag-of-words", "word2vec", "embeddings"]): return None
     session["preprocess"] = preprocess
-    if not check_param(shuffle_data, "shuffle_data", [bool], None): return None
-    if not check_param(seed, "seed", [int,None], None): return None
-    if not check_param(min_samples, "min_samples", [int,None], None): return None
-    if not check_param(encode_labels, "encode_labels", [bool], None): return None
-    if not check_param(clean_text, "clean_text", [str,None], ["letters", "letters digits"]): return None
-    if not check_param(stopwords, "stopwords", [list,None], None): return None
-    if not check_param(max_features, "max_features", [int,None], None): return None
+    if not check_param(shuffle_data, "shuffle_data", [bool]): return None
+    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return None
+    if not check_param(min_samples, "min_samples", [int,None], expr=min_samples is None or min_samples>1, expr_msg="min samples higher than 1"): return None
+    if not check_param(encode_labels, "encode_labels", [bool]): return None
+    if not check_param(clean_text, "clean_text", [str,None], vals=["letters", "letters digits"]): return None
+    if not check_param(stopwords, "stopwords", [list,None]): return None
+    if not check_param(max_features, "max_features", [int,None], expr=max_features is None or max_features>1, expr_msg="max features must be 1 or higher"): return None
     if not check_param(tf_idf, "tf_idf", [bool], None): return None
-    if not check_param(w2v_vector_size, "w2v_vector_size", [int], None): return None
+    if not check_param(w2v_vector_size, "w2v_vector_size", [int], expr=w2v_vector_size>1, expr_msg="vector size must be larger than 1"): return None
     if not check_param(w2v_rebuild, "w2v_rebuild", [bool], None): return None
-    if not check_param(embeddings_size, "embeddings_size", [int], None): return None
-    if not check_param(embeddings_max_length, "embeddings_max_length", [int,None], None): return None
+    if not check_param(embeddings_size, "embeddings_size", [int], expr=embeddings_size>1, expr_msg="embeddings size must be larger than 1"): return None
+    if not check_param(embeddings_max_length, "embeddings_max_length", [int,None], expr=embeddings_max_length is None or embeddings_max_length>1, expr_msg="embeddings max length must be larger than 1"): return None
+    if not check_param(verbose, "verbose", [int], vals=[0,1]): return None
     
     # Load data
     if not exists(file):
@@ -281,13 +304,22 @@ def load_data(file,
     return session
 
 
-#
-# Show data stats
-#
 def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
-    if session is None:
-        error("Session is empty")
-        return
+    """
+    Show statistics about the loaded dataset.
+
+    Args:
+        session: Session object (created in load_data())
+        max_rows (int or None): Max categories to show. If None, all categories are shown (default: None)
+        show_graph (bool): Show bar graph with examples per category (default: False)
+        descriptions (dict or None): Optional descriptions for categories, or None for no descriptions. Descriptions shall contain categories as keys and descriptive texts as values, for example {1: 'Iris-setosa'} (default: None)
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
+    if not check_param(max_rows, "max_rows", [int,None], expr=max_rows is None or max_rows>=1, expr_msg="max rows must be at least 1"): return None
+    if not check_param(show_graph, "show_graph", [bool]): return None
+    if not check_param(descriptions, "descriptions", [dict,None]): return None
     
     # Regression
     if session["mode"] == "regression":
@@ -411,29 +443,29 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
     t.display()
 
 
-#
-# Split data into train and test sets
-#
 def split_data(session,
                test_size=0.2,
                seed=None,
                stratify=False,
                verbose=1,
               ):
-    if session is None:
-        error("Session is empty")
-        return
+    """
+    Split data into training and test sets.
+
+    Args:
+        session: Session object (created in load_data())
+        test_size (float): Size of test set. Must be between 0 and 1 (default: 0.2)
+        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
+        stratify (bool): If stratify, test set will as much as possible keep the ratio between examples of each category (default: False)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+    """
     
     # Check params
-    if not check_param(test_size, "test_size", [float], None): return
-    if not check_param(seed, "seed", [int,None], None): return
-    if not check_param(stratify, "stratify", [bool], None): return
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
+    if not check_param(test_size, "test_size", [float,int], expr=test_size>0 and test_size<1, expr_msg="test size must be between 0 and 1"): return
+    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
+    if not check_param(stratify, "stratify", [bool]): return
 
-    # Check test size
-    if test_size <= 0 or test_size >= 1:
-        test_size = 0.2
-        warning(colored("test_size", "cyan") + " must be between 0 and 1 (using " + colored("0.2", "blue") + ")")
-        
     # Info string
     s = "Split data using " + colored(f"{(1-test_size)*100:.0f}%", "blue") + " training data and " + colored(f"{(test_size)*100:.0f}%", "blue") + " test data"
     
@@ -462,9 +494,6 @@ def split_data(session,
         info(s)
 
 
-#
-# Sets resampling method to use
-#
 def set_resample(session, 
                  mode="u",
                  max_samples=500,
@@ -473,12 +502,25 @@ def set_resample(session,
                  increase_limit=1.0,
                  auto=False,
                  seed=None,
+                 verbose=1,
                 ):
-    if session is None:
-        error("Session is empty")
-        return
+    """
+    Sets over- and undersampling to be used when training models.
+
+    Args:
+        session: Session object (created in load_data())
+        mode (set): Specifies which over- and undersampling methods to be used. Mode can be combinations of 'u' (random undersampling), 'o' (random oversampling) and 's' (SMOTE oversampling), for example 'us' if both random undersampling and SMOTE oversampling shall be used (default: 'u')
+        max_samples (int): Max samples for categories when undersampling (also see decrease_limit) (default: 500)
+        decrease_limit (float): Max reduction of samples when undersampling, for example a category with 2000 samples will be undersampled to 1000 samples if decrease_limit is 0.5 regardless if max_samples is lower than 1000 (default: 0.5)
+        min_samples (int): Min samples for categories when oversampling (also see increase_limit) (default: 50)
+        increase_limit (float): Max increase of samples when oversampling, for example a category with 100 samples will be oversampled to 200 samples if increase_limit is 1.0 regardless if min_samples is higher than 200 (default: 1.0)
+        auto (bool): Use auto mode for SMOTE oversampling instead of min_samples/increase_limit. Note that this usually increases the number of samples in the training data a lot (default: False)
+        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+    """
     
     # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     if not check_param(mode, "mode", [str], None): return
     for mode in list(mode):
         if mode not in ["o","u","s"]:
@@ -487,12 +529,13 @@ def set_resample(session,
     if len(mode) == 0:
         error("Parameter " + colored("mode", "cyan") + " is empty")
         return
-    if not check_param(max_samples, "max_samples", [int], None): return
-    if not check_param(decrease_limit, "decrease_limit", [float,int], None): return
-    if not check_param(min_samples, "max_samples", [int], None): return
-    if not check_param(increase_limit, "decrease_limit", [float,int], None): return
-    if not check_param(auto, "auto", [bool], None): return
-    if not check_param(seed, "seed", [int,None], None): return
+    if not check_param(max_samples, "max_samples", [int], expr=max_samples>=1, expr_msg="max samples must be 1 or higher"): return
+    if not check_param(decrease_limit, "decrease_limit", [float,int], expr=decrease_limit>0 and decrease_limit<1, expr_msg="decrease limit must be between 0 and 1"): return
+    if not check_param(min_samples, "min_samples", [int], expr=min_samples>=1, expr_msg="min samples must be 1 or higher"): return
+    if not check_param(increase_limit, "increase_limit", [float,int], expr=increase_limit>=1, expr_msg="increase limit must be 1 or higher"): return
+    if not check_param(auto, "auto", [bool]): return
+    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
+    if not check_param(verbose, "verbose", [int], vals=[0,1]): return
     
     session["resample"] = {
         "mode": mode,
@@ -502,29 +545,43 @@ def set_resample(session,
         if mode == "u":
             session["resample"]["max_samples"] = max_samples
             session["resample"]["decrease_limit"] = decrease_limit
-            info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and decrease limit " + colored(decrease_limit, "blue"))
+            if verbose >= 1:
+                info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and decrease limit " + colored(decrease_limit, "blue"))
         elif mode == "o":
             session["resample"]["min_samples"] = min_samples
             session["resample"]["increase_limit"] = increase_limit
-            info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
+            if verbose >= 1:
+                info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
         elif mode == "s":
             if auto:
                 session["resample"]["auto"] = 1
-                info("Using auto SMOTE oversampling")
+                if verbose >= 1:
+                    info("Using auto SMOTE oversampling")
             else:
                 session["resample"]["min_samples"] = min_samples
                 session["resample"]["increase_limit"] = increase_limit
-                info("Using SMOTE oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
+                if verbose >= 1:
+                    info("Using SMOTE oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
     session["eval_mode"] = ""
         
         
-# 
-# Clear resample settings
-#
-def clear_resample(session):
+def clear_resample(session, verbose=1):
+    """
+    Clears resample settings.
+
+    Args:
+        session: Session object (created in load_data())
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
+    if not check_param(verbose, "verbose", [int], vals=[0,1]): return
+    
     if "resample" in session:
         del session["resample"]
-        info("Removed resample settings")
+        if verbose >= 1:
+            info("Removed resample settings")
     else:
         warning("No resample settings found in session")
 
@@ -595,13 +652,10 @@ class KerasWrapper:
         self.fitted = False
         
 
-#
-# Builds and evaluates model
-#
 def evaluate_model(model, 
                    session, 
                    reload=False, 
-                   mode="all",
+                   mode="CV-5",
                    seed=None,
                    top_n=None,
                    categories=False,
@@ -615,27 +669,48 @@ def evaluate_model(model,
                    loss="categorical_crossentropy",
                    optimizer="adam",
                    ):
+    
+    """
+    Builds a classification or regression model and evaluates it.
+
+    Args:
+        model: Scikit-learn or Keras classifier/regressor, for example RandomForestClassifier()
+        session: Session object (created in load_data())
+        reload (bool): Set to True of model shall be rebuilt. If False, previously built model will be used (if any) (default: False) 
+        mode (str): Set evaluation mode: 'split' uses train-test split (see split_data()), 'all' trains and evaluates the model on all data and 'CV-n' uses n-fold cross validation (default: 'CV-5')
+        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
+        top_n (int or None): Set if calculating metrics for top n results instead of only the top result. If None, metrics will only be calculated for the top result (default: None)
+        categories (bool): True if table with metrics per category shall be shown (default: False)
+        max_categories (int or None): Set to limit the number of categories to be shown in the categories table. If None, all categories are shown (default: None)
+        sidx (int): When limiting the number of categories to be shown in the categories table, sidx specifies the start index of the first category in the table (default: 0)
+        max_errors (int or None): Set to limit the number of errors to be shown for each category in the categories table. If None, all errors are shown (default: None)
+        confusionmatrix (bool): True of confusion matrix shall be shown (default: False)
+        cm_norm (str or None): Normalization mode for the confusion matrix ('true', 'pred', 'all' or None) (default: None)
+        epochs (int): Number of epochs to be used for Keras models (default: 5)
+        batch_size (int): Batch size to be used for Keras models (default: 32)
+        loss (str): Loss function to be used for Keras models (default: 'categorical_crossentropy')
+        optimizer (str or object): Optimizer to be used for Keras models (default: 'adam')
+    """
+    
     # Check params
-    if session is None:
-        error("Session is empty")
-        return
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     if model is None:
         error("Model is None")
         return
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
-    if not check_param(mode, "mode", [str], None): return None
-    if not check_param(seed, "seed", [int,None], None): return None
-    if not check_param(top_n, "top_n", [int,None], None): return None
-    if not check_param(categories, "categories", [bool], None): return None
-    if not check_param(max_categories, "max_categories", [int,None], None): return None
-    if not check_param(max_errors, "max_errors", [int,None], None): return None
-    if not check_param(sidx, "sidx", [int], None): return None
-    if not check_param(confusionmatrix, "confusionmatrix", [bool], None): return None
-    if not check_param(cm_norm, "cm_norm", [str,None], ["true","pred","all",None]): return None
-    if not check_param(epochs, "epochs", [int], None): return None
-    if not check_param(batch_size, "batch_size", [int], None): return None
+    if not check_param(mode, "mode", [str], expr=mode=="all" or mode=="split" or mode.startswith("CV-"), expr_msg="mode must be split, CV-# or all"): return
+    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
+    if not check_param(top_n, "top_n", [int,None], expr=top_n is None or top_n>=2, expr_msg="top n must be 2 or higher"): return
+    if not check_param(categories, "categories", [bool]): return
+    if not check_param(max_categories, "max_categories", [int,None], expr=max_categories is None or max_categories>=1, expr_msg="max categories must be at least 1"): return
+    if not check_param(max_errors, "max_errors", [int,None], expr=max_errors is None or max_errors>=1, expr_msg="max errors must be at least 1"): return
+    if not check_param(sidx, "sidx", [int], expr=sidx>=0, expr_msg="sidx cannot be negative"): return
+    if not check_param(confusionmatrix, "confusionmatrix", [bool]): return
+    if not check_param(cm_norm, "cm_norm", [str,None], ["true","pred","all"]): return
+    if not check_param(epochs, "epochs", [int], expr=epochs>=1, expr_msg="epochs must be at least 1"): return
+    if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch size must be at least 1"): return
     
     # Check if we have a Keras model
     if "keras." in str(type(model)):
@@ -930,9 +1005,6 @@ def evaluate_model(model,
     print()
 
 
-#
-# Builds final model
-#
 def build_model(model, 
                 session, 
                 mode="all",
@@ -942,19 +1014,32 @@ def build_model(model,
                 optimizer="adam",
                 seed=None,
                ):
-    if session is None:
-        error("Session is empty")
-        return
+    """
+    Builds final classification or regression model.
+
+    Args:
+        model: Scikit-learn or Keras classifier/regressor, for example RandomForestClassifier()
+        session: Session object (created in load_data())
+        mode (str): Sets if final model shall be built on training data ('split') or all data ('all') (default: 'all')
+        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
+        epochs (int): Number of epochs to be used for Keras models (default: 5)
+        batch_size (int): Batch size to be used for Keras models (default: 32)
+        loss (str): Loss function to be used for Keras models (default: 'categorical_crossentropy')
+        optimizer (str or object): Optimizer to be used for Keras models (default: 'adam')
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     if model is None:
         error("Model is None")
         return
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
-    if not check_param(mode, "mode", [str], None): return None
-    if not check_param(seed, "seed", [int,None], None): return None
-    if not check_param(epochs, "epochs", [int], None): return None
-    if not check_param(batch_size, "batch_size", [int], None): return None
+    if not check_param(mode, "mode", [str], vals=["all", "split"]): return
+    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
+    if not check_param(epochs, "epochs", [int], expr=epochs>=1, expr_msg="epochs must be at least 1"): return
+    if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch size must be at least 1"): return
         
     # Check if we have a Keras model
     if "keras." in str(type(model)):
@@ -997,13 +1082,18 @@ def build_model(model,
         error("Invalid mode " + colored(mode, "cyan"))
 
 
-#
-# Save session to file
-#
-def save_session(session, id, verbose=1):
-    if session is None:
-        error("Session is empty")
-        return
+def save_session(session, sid, verbose=1):
+    """
+    Saves a session to file.
+
+    Args:
+        session: Session object (created in load_data())
+        sid (int or str): Session id to store the session in
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     
     # Check if path exists
     fpath = "sessions"
@@ -1014,17 +1104,25 @@ def save_session(session, id, verbose=1):
     session["created"] = timestamp_to_str(None)
     
     # Dump to file
-    file = f"sessions/{id}.gz"
+    file = f"sessions/{sid}.gz"
     dump(session, gzip.open(file, "wb"))
     if verbose >= 1:
         info("Session saved to " + colored(file, "cyan"))
 
 
-#
-# Load session from file
-#
-def load_session(id, verbose=1):
-    file = f"sessions/{id}.gz"
+def load_session(sid, verbose=1):
+    """
+    Loads a session from file.
+
+    Args:
+        sid (int or str): Session id the session is stored in
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+        
+    Returns:
+        session: Session object
+    """
+    
+    file = f"sessions/{sid}.gz"
     if not exists(file) and not file.endswith(".gz"):
         file += ".gz"
     if not exists(file):
@@ -1037,13 +1135,16 @@ def load_session(id, verbose=1):
     return s
 
 
-#
-# Dump n prediction errors
-#
 def prediction_errors_for_category(session, category, predicted_category=None, sidx=0, n=5):
-    if session is None:
-        error("Session is empty")
-        return
+    """
+    Dumps n prediction errors. TBD.
+
+    Args:
+        session: Session object (created in load_data())
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     
     # Check if model has been built
     if "model" not in session:
@@ -1070,13 +1171,16 @@ def prediction_errors_for_category(session, category, predicted_category=None, s
     t.display()
     
 
-#
-# Check actual categories for prediction errors where predicted category is specified as param
-#
 def errors_for_predicted_category(session, category, n=None):
-    if session is None:
-        error("Session is empty")
-        return 
+    """
+    Check actual categories for prediction errors where predicted category matches the specified category. TBD.
+
+    Args:
+        session: Session object (created in load_data())
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     # Check if model has been built
     if "model" not in session:
         error("Final model has not been built. Use the function " + colored("build_model()", "cyan"))
@@ -1136,13 +1240,23 @@ def errors_for_predicted_category(session, category, n=None):
     t.cell_style(1, -1, {"color": "value"})
     t.display()
     
-    
-#
-# Predict example
-#
+
 def predict(xi, session):
-    if session is None:
-        error("Session is empty")
+    """
+    Predics an example using the final model.
+
+    Args:
+        xi: The example to predict
+        session: Session object (created in load_data())
+        
+    Returns:
+        Predicted value for the example
+    """
+    
+    # Check params
+    if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
+    if xi is None:
+        error("example is empty")
         return
     
     # Check if model has been built

@@ -8,6 +8,20 @@ import time
 # Load and preprocess Keras embeddings data
 #
 def load_embeddings_data(session, embeddings_size, max_length, stopwords, verbose=1):
+    """
+    Loads and pre-processes Keras embeddings word vectors for the loaded text data.
+
+    Args:
+        session: Session object (created in load_data())
+        embeddings_size (int): Size of word vectors
+        max_length (int): Max size of word vectors
+        stopwords (str, list or None): Lists of stopwords to be used for text pre-processing. Can be either languages (from the nltk.corpus package) or paths to csv files, for example ['english', 'data/custom_stopwords.csv']. If None, no stopwords will be used (default: None)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+        
+    Returns:
+        Word2vec word vectors data
+    """
+    
     from tensorflow.keras.preprocessing.sequence import pad_sequences
     from tensorflow.keras.preprocessing.text import Tokenizer
 
@@ -61,11 +75,19 @@ def load_embeddings_data(session, embeddings_size, max_length, stopwords, verbos
     session["max_length"] = maxlen
     session["vocab_size"] = vocab_size
     
-    
-#
-# Create embedding for example
-#
+
 def embedding(xi, session):
+    """
+    Creates an embedding word vector for an example.
+
+    Args:
+        xi: The example of text data
+        session: Session object (created in load_data())
+        
+    Returns:
+        Embeddings vector for the example
+    """
+    
     from tensorflow.keras.preprocessing.sequence import pad_sequences
     from tensorflow.keras.preprocessing.text import Tokenizer
     

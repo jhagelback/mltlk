@@ -7,11 +7,20 @@ from imblearn.over_sampling import RandomOverSampler
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
   
-    
-#
-# Random undersampling
-#
+
 def rnd_undersampling(session, X, y):
+    """
+    Runs random undersampling on data.
+
+    Args:
+        session: Session object (created in load_data())
+        X (list or np.array): Input data
+        y (list or np.array): Categories
+        
+    Returns:
+        Undersampled data
+    """
+    
     # Set no per label
     lcnt = Counter(y)
     for key,n in lcnt.items():
@@ -26,10 +35,19 @@ def rnd_undersampling(session, X, y):
     return X, y
 
 
-#
-# Random oversampling
-#
 def rnd_oversampling(session, X, y):
+    """
+    Runs random oversampling on data.
+
+    Args:
+        session: Session object (created in load_data())
+        X (list or np.array): Input data
+        y (list or np.array): Categories
+        
+    Returns:
+        Oversampled data
+    """
+    
     # Set no per label
     lcnt = Counter(y)
     for key,n in lcnt.items():
@@ -43,11 +61,20 @@ def rnd_oversampling(session, X, y):
     X, y = rsmp.fit_resample(X, y)
     return X, y
     
-    
-#
-# SMOTE oversampling
-#
+
 def smote_oversampling(session, X, y):
+    """
+    Runs SMOTE oversampling on data.
+
+    Args:
+        session: Session object (created in load_data())
+        X (list or np.array): Input data
+        y (list or np.array): Categories
+        
+    Returns:
+        Oversampled data
+    """
+    
     # Error check
     if "auto" in session["resample"]:
         lcnt = "auto"
@@ -67,10 +94,20 @@ def smote_oversampling(session, X, y):
     return X, y
     
 
-#
-# Resample training data
-#
 def resample(session, X, y, verbose=1):
+    """
+    Runs resampling on data.
+
+    Args:
+        session: Session object (created in load_data())
+        X (list or np.array): Input data
+        y (list or np.array): Categories
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+        
+    Returns:
+        Resampled data
+    """
+    
     # Check training set size before resampling
     if type(X) == list:
         x_orig = len(X)

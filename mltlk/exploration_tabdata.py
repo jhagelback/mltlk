@@ -6,13 +6,32 @@ import numpy as np
 from collections import Counter
 
 
-#
-# Plot numerical/nominal features
-#
-def plot_data(session, mode="", horizontal=True, category=None, lim=None, table=True, plot=True, size=(14,6)):
+def plot_data(session, mode=None, horizontal=True, category=None, lim=None, table=True, plot=True, size=(14,6)):
+    """
+    Plots numerical and/or nominal features in the loaded dataset.
+
+    Args:
+        session: Session object (created in load_data())
+        mode (str or None): Set to 'scaled' if used scaled inputs instead of original values (None) (default: None)
+        horizontal (bool): Horizontal (True) or vertical (False) plots (default: True)
+        category (str, int or None): Set if only plot examples from a specific category. If None, all examples are plotted (default: None)
+        lim (tuple of ints): Min and max values for the value axis, for example (0,1000). If None, auto limit is used (default: None)
+        table (bool): Set if show table for numerical and/or nominal features.
+        plot (bool): Set if show plot for numerical features.
+        size (tuple of ints): Size of plot (default (14,6))
+    """
+    
+    # Check params
+    if not check_param(mode, "mode", [str,None], vals=["scaled"]): return
+    if not check_param(horizontal, "horizontal", [bool]): return
+    if not check_param(lim, "lim", [tuple,None]): return
+    if not check_param(table, "table", [bool]): return
+    if not check_param(plot, "plot", [bool]): return
+    if not check_param(size, "size", [tuple]): return
     if session is None:
         error("Session is empty")
         return
+    
     
     # Placeholder for numerical features
     num_data = {
@@ -30,7 +49,7 @@ def plot_data(session, mode="", horizontal=True, category=None, lim=None, table=
     
     # Use original or preprocessed data
     key = "X_original"
-    if mode in ["scale", "scaled"]:
+    if mode == "scaled":
         key = "X"
     
     # Categories to include
@@ -109,11 +128,22 @@ def plot_data(session, mode="", horizontal=True, category=None, lim=None, table=
             "lim": lim,
         })
     
+
+def plot_data_per_category(session, mode=None):
+    """
+    Plots numerical and/or nominal features with one plot/table per category in the loaded dataset.
+
+    Args:
+        session: Session object (created in load_data())
+        mode (str or None): Set to 'scaled' if used scaled inputs instead of original values (None) (default: None)
+    """
     
-#
-# Plot numerical/nominal features per category
-#
-def plot_data_per_category(session, mode=""):
+    # Check params
+    if not check_param(mode, "mode", [str,None], vals=["scaled"]): return
+    if session is None:
+        error("Session is empty")
+        return
+    
     if session is None:
         error("Session is empty")
         return
@@ -125,7 +155,7 @@ def plot_data_per_category(session, mode=""):
     
     # Use original or preprocessed data
     key = "X_original"
-    if mode in ["scale", "scaled"]:
+    if mode == "scaled":
         key = "X"
     
     nom = False
