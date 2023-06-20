@@ -9,3 +9,7 @@ Install with:
 
 ## How to use
 Check the notebooks for examples of how to use the toolkit.
+
+## Documentation
+The toolkit uses Google Docstrings for documention. You can see documentation about a function by using help with the function name as parameter:
+<code>help(mltk.load_data)</code>
