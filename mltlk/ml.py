@@ -88,7 +88,7 @@ def load_data(file,
     if not check_param(min_samples, "min_samples", [int,None], expr=min_samples is None or min_samples>1, expr_msg="min samples higher than 1"): return None
     if not check_param(encode_labels, "encode_labels", [bool]): return None
     if not check_param(clean_text, "clean_text", [str,None], vals=["letters", "letters digits"]): return None
-    if not check_param(stopwords, "stopwords", [list,None]): return None
+    if not check_param(stopwords, "stopwords", [list,str,None]): return None
     if not check_param(max_features, "max_features", [int,None], expr=max_features is None or max_features>1, expr_msg="max features must be 1 or higher"): return None
     if not check_param(tf_idf, "tf_idf", [bool], None): return None
     if not check_param(w2v_vector_size, "w2v_vector_size", [int], expr=w2v_vector_size>1, expr_msg="vector size must be larger than 1"): return None
@@ -522,8 +522,8 @@ def set_resample(session,
     # Check params
     if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     if not check_param(mode, "mode", [str], None): return
-    for mode in list(mode):
-        if mode not in ["o","u","s"]:
+    for m in list(mode):
+        if m not in ["o","u","s"]:
             error("Unsupported resample mode (must be " + colored("o", "cyan") + ", " + colored("u", "cyan") + " or " + colored("s", "cyan") + ")")
             return
     if len(mode) == 0:
@@ -541,18 +541,18 @@ def set_resample(session,
         "mode": mode,
         "seed": seed,
     }
-    for mode in list(mode):
-        if mode == "u":
+    for m in list(mode):
+        if m == "u":
             session["resample"]["max_samples"] = max_samples
             session["resample"]["decrease_limit"] = decrease_limit
             if verbose >= 1:
                 info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and decrease limit " + colored(decrease_limit, "blue"))
-        elif mode == "o":
+        elif m == "o":
             session["resample"]["min_samples"] = min_samples
             session["resample"]["increase_limit"] = increase_limit
             if verbose >= 1:
                 info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
-        elif mode == "s":
+        elif m == "s":
             if auto:
                 session["resample"]["auto"] = 1
                 if verbose >= 1:
