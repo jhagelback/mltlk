@@ -25,10 +25,10 @@ def rnd_undersampling(session, X, y):
     lcnt = Counter(y)
     for key,n in lcnt.items():
         if n > session["resample"]["max_samples"]:
-            nn = session["resample"]["max_samples"]-n
-            if nn/n*-1 > session["resample"]["decrease_limit"]:
-                nn = -int(n * session["resample"]["decrease_limit"])
-            lcnt.update({key: nn})
+            nn = session["resample"]["max_samples"]
+            if nn < n / session["resample"]["max_decrease"]:
+                nn = int(n / session["resample"]["max_decrease"])
+            lcnt[key] = nn
     # Perform undersampling
     rsmp = RandomUnderSampler(random_state=session["resample"]["seed"], sampling_strategy=lcnt)
     X, y = rsmp.fit_resample(X, y)
@@ -52,10 +52,10 @@ def rnd_oversampling(session, X, y):
     lcnt = Counter(y)
     for key,n in lcnt.items():
         if n < session["resample"]["min_samples"]:
-            nn = session["resample"]["min_samples"] - n
-            if nn/n > session["resample"]["increase_limit"]:
-                nn = int(n * session["resample"]["increase_limit"])
-            lcnt.update({key: nn})
+            nn = session["resample"]["min_samples"]
+            if nn > n * session["resample"]["max_increase"]:
+                nn = int(n * session["resample"]["max_increase"])
+            lcnt[key] = nn
     # Perform oversampling
     rsmp = RandomOverSampler(random_state=session["resample"]["seed"], sampling_strategy=lcnt)
     X, y = rsmp.fit_resample(X, y)
@@ -83,12 +83,11 @@ def smote_oversampling(session, X, y):
         lcnt = Counter(y)
         for key,n in lcnt.items():
             if n < session["resample"]["min_samples"]:
-                nn = session["resample"]["min_samples"] - n
-                if nn/n > session["resample"]["increase_limit"]:
-                    nn = int(n * session["resample"]["increase_limit"])
-                lcnt.update({key: nn})
-
-    # Perform oversampling
+                nn = session["resample"]["min_samples"]
+                if nn > n * session["resample"]["max_increase"]:
+                    nn = int(n * session["resample"]["max_increase"])
+                lcnt[key] = nn
+    # Perform SMOTE oversampling
     rsmp = SMOTE(random_state=session["resample"]["seed"], sampling_strategy=lcnt)
     X, y = rsmp.fit_resample(X, y)
     return X, y
@@ -115,6 +114,7 @@ def resample(session, X, y, verbose=1):
         x_orig = X.shape[0]         
     
     # Resampling
+    ycnt_orig = Counter(y)
     for mode in list(session["resample"]["mode"]):
         if mode == "u": 
             X, y = rnd_undersampling(session, X, y)
@@ -122,18 +122,26 @@ def resample(session, X, y, verbose=1):
             X, y = rnd_oversampling(session, X, y)
         if mode == "s":
             X, y = smote_oversampling(session, X, y)
-        
-    # Check training set size after resampling
-    if type(X) == list:
-        x_rsmp = len(X)
-    else:
-        x_rsmp = X.shape[0]
     
     if verbose >= 1:
-        if x_rsmp < x_orig:
-            info("Resampling reduced no samples with " + colored(f"{x_orig-x_rsmp} ", "green") + "(" + colored(f"{(x_orig-x_rsmp)/x_orig*100:.1f}%", "green") + ")")
-        elif x_rsmp > x_orig:
-            info("Resampling increased no samples with " + colored(f"{x_rsmp-x_orig} ", "green") + "(" + colored(f"{(x_rsmp-x_orig)/x_orig*100:.1f}%", "green") + ")")
+        affected = 0
+        ycnt_rsmp = Counter(y)
+        for cat, n_orig in ycnt_orig.items():
+            n_rsmp = ycnt_rsmp[cat]
+            if n_orig != n_rsmp:
+                affected += 1
+        tot_orig = sum(ycnt_orig.values())
+        tot_rsmp = sum(ycnt_rsmp.values())
+        diff = tot_rsmp-tot_orig
+        diff_pct = (tot_rsmp-tot_orig)/tot_orig
+        if diff <= 0:
+            diff = f"{diff}"
+            diff_pct = f"{diff_pct*100:.1f}%"
+            col = "green"
         else:
-            info("Resampling did not change no samples")
+            diff = f"+{diff}"
+            diff_pct = f"+{diff_pct*100:.1f}%"
+            col = "red"
+        info("Resampling affected " + colored(affected, "blue") + " categories and dataset size changed with " + colored(diff, col) + " samples (" + colored(diff_pct, col) + ")")    
+    
     return X, y

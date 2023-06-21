@@ -465,20 +465,12 @@ def split_data(session,
     if not check_param(test_size, "test_size", [float,int], expr=test_size>0 and test_size<1, expr_msg="test size must be between 0 and 1"): return
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(stratify, "stratify", [bool]): return
-
-    # Info string
-    s = "Split data using " + colored(f"{(1-test_size)*100:.0f}%", "blue") + " training data and " + colored(f"{(test_size)*100:.0f}%", "blue") + " test data"
     
-    # Random seed
-    if seed is not None:
-        s += " with seed " + colored(seed, "blue") 
-        
     # Stratify
     if stratify:
         stratify = session["y"]
-        s += " and stratify"
     else:
-        stratify=None
+        stratify = None
     
     # Split data
     X_train, X_test, y_train, y_test = train_test_split(session["X"], session["y"], test_size=test_size, random_state=seed, stratify=stratify)
@@ -488,21 +480,37 @@ def split_data(session,
     session["X_test"] = X_test
     session["y_train"] = y_train
     session["y_test"] = y_test
+    session["test_size"] = test_size
+    session["train_size"] = 1 - test_size
     session["eval_mode"] = ""
     
     if verbose >= 1:
+        # Info string
+        if type(y_train) == list:
+            ntr = len(y_train)
+        else:
+            ntr = y_train.shape[0]
+        if type(y_test) == list:
+            nte = len(y_test)
+        else:
+            nte = y_test.shape[0]
+        s = "Split data using " + colored(f"{(1-test_size)*100:.0f}%", "blue") + " training data (" + colored(ntr, "blue") + " samples) and " + colored(f"{(test_size)*100:.0f}%", "blue") + " test data (" + colored(nte, "blue")+ " samples)"
+        if seed is not None:
+            s += " with seed " + colored(seed, "blue") 
+        if stratify is not None:
+            s += " and stratify"
         info(s)
 
 
 def set_resample(session, 
                  mode="u",
                  max_samples=500,
-                 decrease_limit=0.5,
+                 max_decrease=2.0,
                  min_samples=50,
-                 increase_limit=1.0,
+                 max_increase=2.0,
                  auto=False,
                  seed=None,
-                 verbose=1,
+                 verbose=2,
                 ):
     """
     Sets over- and undersampling to be used when training models.
@@ -511,12 +519,12 @@ def set_resample(session,
         session: Session object (created in load_data())
         mode (set): Specifies which over- and undersampling methods to be used. Mode can be combinations of 'u' (random undersampling), 'o' (random oversampling) and 's' (SMOTE oversampling), for example 'us' if both random undersampling and SMOTE oversampling shall be used (default: 'u')
         max_samples (int): Max samples for categories when undersampling (also see decrease_limit) (default: 500)
-        decrease_limit (float): Max reduction of samples when undersampling, for example a category with 2000 samples will be undersampled to 1000 samples if decrease_limit is 0.5 regardless if max_samples is lower than 1000 (default: 0.5)
+        max_decrease (float): Max reduction factor of samples when undersampling, for example a category with 2000 samples will be undersampled to 1000 samples if max decrease is 2 regardless if max_samples is lower than 1000 (default: 2.0)
         min_samples (int): Min samples for categories when oversampling (also see increase_limit) (default: 50)
-        increase_limit (float): Max increase of samples when oversampling, for example a category with 100 samples will be oversampled to 200 samples if increase_limit is 1.0 regardless if min_samples is higher than 200 (default: 1.0)
+        max_increase (float): Max increase factor of samples when oversampling, for example a category with 100 samples will be oversampled to 200 samples if max increase is 2 regardless if min_samples is higher than 200 (default: 2.0)
         auto (bool): Use auto mode for SMOTE oversampling instead of min_samples/increase_limit. Note that this usually increases the number of samples in the training data a lot (default: False)
         seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
-        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 1)
+        verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 2)
     """
     
     # Check params
@@ -530,12 +538,14 @@ def set_resample(session,
         error("Parameter " + colored("mode", "cyan") + " is empty")
         return
     if not check_param(max_samples, "max_samples", [int], expr=max_samples>=1, expr_msg="max samples must be 1 or higher"): return
-    if not check_param(decrease_limit, "decrease_limit", [float,int], expr=decrease_limit>0 and decrease_limit<1, expr_msg="decrease limit must be between 0 and 1"): return
+    if not check_param(max_decrease, "max_decrease", [float,int], expr=max_decrease>1, expr_msg="max decrease must be 1 or higher"): return
     if not check_param(min_samples, "min_samples", [int], expr=min_samples>=1, expr_msg="min samples must be 1 or higher"): return
-    if not check_param(increase_limit, "increase_limit", [float,int], expr=increase_limit>=1, expr_msg="increase limit must be 1 or higher"): return
+    if not check_param(max_increase, "max_increase", [float,int], expr=max_increase>=1, expr_msg="max_increase must be 1 or higher"): return
     if not check_param(auto, "auto", [bool]): return
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
-    if not check_param(verbose, "verbose", [int], vals=[0,1]): return
+    if not check_param(verbose, "verbose", [int], vals=[0,1,2]): return
+    if "s" in mode and "o" in mode:
+        warning("multiple oversampling")
     
     session["resample"] = {
         "mode": mode,
@@ -544,14 +554,14 @@ def set_resample(session,
     for m in list(mode):
         if m == "u":
             session["resample"]["max_samples"] = max_samples
-            session["resample"]["decrease_limit"] = decrease_limit
+            session["resample"]["max_decrease"] = max_decrease
             if verbose >= 1:
-                info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and decrease limit " + colored(decrease_limit, "blue"))
+                info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and max decrease " + colored(max_decrease, "blue"))
         elif m == "o":
             session["resample"]["min_samples"] = min_samples
-            session["resample"]["increase_limit"] = increase_limit
+            session["resample"]["max_increase"] = max_increase
             if verbose >= 1:
-                info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
+                info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and max increase " + colored(max_increase, "blue"))
         elif m == "s":
             if auto:
                 session["resample"]["auto"] = 1
@@ -559,10 +569,77 @@ def set_resample(session,
                     info("Using auto SMOTE oversampling")
             else:
                 session["resample"]["min_samples"] = min_samples
-                session["resample"]["increase_limit"] = increase_limit
+                session["resample"]["max_increase"] = max_increase
                 if verbose >= 1:
-                    info("Using SMOTE oversampling with min samples " + colored(min_samples, "blue") + " and increase limit " + colored(increase_limit, "blue"))
+                    info("Using SMOTE oversampling with min samples " + colored(min_samples, "blue") + " and max increase " + colored(max_increase, "blue"))
     session["eval_mode"] = ""
+    
+    # Show how resampling affects training data
+    if verbose >= 2:
+        # Split data (if not already splitted)
+        if "X_train" not in session:
+            split_data(session)
+        ycnt_orig = Counter(session["y_train"])
+        X, y = resample(session, session["X_train"], session["y_train"], verbose=0)
+        ycnt_rsmp = Counter(y)
+        
+        # Convert to table and sort
+        tab = []
+        for cat,n_orig in ycnt_orig.items():
+            n_rsmp = ycnt_rsmp[cat]
+            if n_orig != n_rsmp:
+                tab.append([n_orig, n_rsmp, cat])
+        tab = sorted(tab, reverse=True)
+        
+        if len(tab) == 0:
+            warning("Resampling had no effect")
+        else:
+            t = CustomizedTable(["Category", "Samples original", "Samples resampled", "Diff", "Diff (%)"])
+            t.column_style([0], {"color": "id"})
+            t.column_style([1,2], {"color": "value"})
+            for r in tab:
+                diff = r[1]-r[0]
+                diff_pct = (r[1]-r[0])/r[0]
+                if diff <= 0:
+                    diff = f"{diff}"
+                    diff_pct = f"{diff_pct*100:.1f}%"
+                    col = "green"
+                else:
+                    diff = f"+{diff}"
+                    diff_pct = f"+{diff_pct*100:.1f}%"
+                    col = "red"
+                if "label_encoder" in session and type(session["label_encoder"]) == LabelEncoder:
+                    l = session["label_encoder"].inverse_transform([r[2]])[0]
+                    cat = f"{l} ({r[2]})"
+                else:
+                    cat = r[2]
+                t.add_row([cat, r[0], r[1], diff, diff_pct])
+                t.cell_style([3,4], -1, {"color": col})
+            # Total row
+            tot_orig = sum(ycnt_orig.values())
+            tot_rsmp = sum(ycnt_rsmp.values())
+            diff = tot_rsmp-tot_orig
+            diff_pct = (tot_rsmp-tot_orig)/tot_orig
+            if diff <= 0:
+                diff = f"{diff}"
+                diff_pct = f"{diff_pct*100:.1f}%"
+                col = "green"
+            else:
+                diff = f"+{diff}"
+                diff_pct = f"+{diff_pct*100:.1f}%"
+                col = "red"
+            t.add_row(["Total:", tot_orig, tot_rsmp, diff, diff_pct], style={"border": "top", "background": "#eee", "row-toggle-background": 0})
+            t.cell_style(0, -1, {"font": "bold", "color": "black"})
+            t.cell_style([3,4], -1, {"color": col})
+            t.add_row(["Categories affected:", len(tab), f"{len(tab)/len(ycnt_orig)*100:.1f}%", "", ""], style={"background": "#eee", "row-toggle-background": 0})
+            t.cell_style(0, -1, {"color": "black"})
+            t.add_row(["Categories unchanged:", len(ycnt_orig)-len(tab), f"{(len(ycnt_orig)-len(tab))/len(ycnt_orig)*100:.1f}%", "", ""], style={"background": "#eee", "row-toggle-background": 0})
+            t.cell_style(0, -1, {"color": "black"})
+            t.add_row(["Training set size:", f"{session['train_size']*100:.1f}%", "", "", ""], style={"border": "bottom", "background": "#eee", "row-toggle-background": 0})
+            t.cell_style(0, -1, {"color": "black"})
+            print()
+            t.display()
+            print()
         
         
 def clear_resample(session, verbose=1):
