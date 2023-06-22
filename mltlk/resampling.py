@@ -142,6 +142,6 @@ def resample(session, X, y, verbose=1):
             diff = f"+{diff}"
             diff_pct = f"+{diff_pct*100:.1f}%"
             col = "red"
-        info("Resampling affected " + colored(affected, "blue") + " categories and dataset size changed with " + colored(diff, col) + " samples (" + colored(diff_pct, col) + ")")    
+        info("Resampling affected " + colored(affected, "blue") + " categories and training set size changed with " + colored(diff, col) + " samples (" + colored(diff_pct, col) + ")")    
     
     return X, y
