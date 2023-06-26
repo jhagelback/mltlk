@@ -1114,7 +1114,6 @@ def build_model(model,
                 batch_size=32,
                 loss="categorical_crossentropy",
                 optimizer="adam",
-                seed=None,
                ):
     """
     Builds final classification or regression model.
@@ -1123,7 +1122,6 @@ def build_model(model,
         model: Scikit-learn or Keras classifier/regressor, for example RandomForestClassifier()
         session: Session object (created in load_data())
         mode (str): Sets if final model shall be built on training data ('split') or all data ('all') (default: 'all')
-        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
         epochs (int): Number of epochs to be used for Keras models (default: 5)
         batch_size (int): Batch size to be used for Keras models (default: 32)
         loss (str): Loss function to be used for Keras models (default: 'categorical_crossentropy')
@@ -1139,7 +1137,6 @@ def build_model(model,
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
     if not check_param(mode, "mode", [str], vals=["all", "split"]): return
-    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(epochs, "epochs", [int], expr=epochs>=1, expr_msg="epochs must be at least 1"): return
     if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch size must be at least 1"): return
         
