@@ -41,7 +41,8 @@ def load_data(file,
               shuffle_data=False,
               seed=None,
               min_samples=None,
-              encode_labels=False,
+              encode_categories=False,
+              category_descriptions=None,
               clean_text="letters digits",
               stopwords=None,
               max_features=None,
@@ -62,7 +63,8 @@ def load_data(file,
         shuffle_data (bool): True if data shall be shuffled (default: False)
         seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
         min_samples (int or None): Set if minority categories (categories with less than min_samples examples) shall be removed. If None, all categories will be included (default: None)
-        encode_labels (bool): True if category labels shall be encoded as integers (default: False)
+        encode_categories (bool): True if category labels shall be encoded as integers (default: False)
+        category_descriptions (dict or None): Optional descriptions for categories, or None for no descriptions. Descriptions shall contain categories as keys and descriptive texts as values, for example {1: 'Iris-setosa'} (default: None)
         clean_text (str or None): When cleaning text data, set if only letters ('letters') or both letters and digits ('letters digits') shall remain in the text. If None, no cleaning will be used (default: 'letters digits')
         stopwords (str, list or None): Lists of stopwords to be used for text pre-processing. Can be either languages (from the nltk.corpus package) or paths to csv files, for example ['english', 'data/custom_stopwords.csv']. If None, no stopwords will be used (default: None)
         max_features (int or None): Max features to be used for bag-of-words text pre-processing. If None, all features will be used (default: None)
@@ -86,7 +88,8 @@ def load_data(file,
     if not check_param(shuffle_data, "shuffle_data", [bool]): return None
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return None
     if not check_param(min_samples, "min_samples", [int,None], expr=min_samples is None or min_samples>1, expr_msg="min samples higher than 1"): return None
-    if not check_param(encode_labels, "encode_labels", [bool]): return None
+    if not check_param(encode_categories, "encode_categories", [bool]): return None
+    if not check_param(category_descriptions, "category_descriptions", [dict,None]): return None
     if not check_param(clean_text, "clean_text", [str,None], vals=["letters", "letters digits"]): return None
     if not check_param(stopwords, "stopwords", [list,str,None]): return None
     if not check_param(max_features, "max_features", [int,None], expr=max_features is None or max_features>1, expr_msg="max features must be 1 or higher"): return None
@@ -230,12 +233,16 @@ def load_data(file,
             session["X"][i] = xi
         session["X_original"] = session["X"].copy()
     
-    # Encode labels
-    if encode_labels:
+    # Encode categories
+    if encode_categories:
         session["label_encoder"] = LabelEncoder().fit(session["y"])
         session["y"] = session["label_encoder"].transform(session["y"])
         if verbose >= 1:
-            info("Labels encoded")
+            info("Categories encoded")
+            
+    # Category descriptions
+    if category_descriptions is not None:
+        session["descriptions"] = category_descriptions
         
     # Bag-of-words representation for input texts
     if preprocess == "bag-of-words":
@@ -304,7 +311,7 @@ def load_data(file,
     return session
 
 
-def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
+def data_stats(session, max_rows=None, show_graph=False):
     """
     Show statistics about the loaded dataset.
 
@@ -312,14 +319,12 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         session: Session object (created in load_data())
         max_rows (int or None): Max categories to show. If None, all categories are shown (default: None)
         show_graph (bool): Show bar graph with examples per category (default: False)
-        descriptions (dict or None): Optional descriptions for categories, or None for no descriptions. Descriptions shall contain categories as keys and descriptive texts as values, for example {1: 'Iris-setosa'} (default: None)
     """
     
     # Check params
     if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
     if not check_param(max_rows, "max_rows", [int,None], expr=max_rows is None or max_rows>=1, expr_msg="max rows must be at least 1"): return None
     if not check_param(show_graph, "show_graph", [bool]): return None
-    if not check_param(descriptions, "descriptions", [dict,None]): return None
     
     # Regression
     if session["mode"] == "regression":
@@ -338,14 +343,6 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         t.display()
         
         return
-    
-    # Set descriptions (if found)
-    if descriptions is not None:
-        if type(descriptions) == dict:
-            session["descriptions"] = descriptions
-        else:
-            warning("Invalid type for descriptions (expected " + colored("dict", "cyan") + ")")
-            descriptions = None
     
     # Get categories
     y = session["y"]
@@ -389,16 +386,16 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
             c += 1
     
     # Show table
-    if descriptions is not None:
+    if "descriptions" in session:
         t = CustomizedTable(["Category", "No", "%", "Σ%", "Description", "Category", "No", "%", "Σ%", "Description", "Category", "No", "%", "Σ%", "Description"])
-        t.column_style([0,5,10], {"color": "id"})
+        t.column_style([0,5,10], {"color": "name"})
         t.column_style([1,6,11], {"color": "value"})
         t.column_style([2,7,12], {"color": "percent"})
         t.column_style([3,8,13], {"color": "green"})
-        t.column_style([4,9,14], {"color": "name"})
+        t.column_style([4,9,14], {"color": "#666"})
     else:
         t = CustomizedTable(["Category", "No", "%", "Σ%", "Category", "No", "%", "Σ%", "Category", "No", "%", "Σ%"])
-        t.column_style([0,4,8], {"color": "id"})
+        t.column_style([0,4,8], {"color": "name"}) # id
         t.column_style([1,5,9], {"color": "value"})
         t.column_style([2,6,10], {"color": "percent"})
         t.column_style([3,7,11], {"color": "green"})
@@ -414,14 +411,14 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
                 r.append(tab2[j][i][1])
                 r.append(tab2[j][i][2])
                 r.append(tab2[j][i][3])
-                if descriptions is not None:
+                if "descriptions" in session:
                     desc = ""
-                    if tab2[j][i][0] in descriptions:
-                        desc = descriptions[tab2[j][i][0]]
+                    if tab2[j][i][0] in session["descriptions"]:
+                        desc = session["descriptions"][tab2[j][i][0]]
                     r.append(desc)
         # Fill row, if not full
         rsize = 15
-        if descriptions is None:
+        if "descriptions" not in session:
             rsize = 12
         if len(r) < rsize:
             i = rsize - len(r)
@@ -433,12 +430,12 @@ def data_stats(session, max_rows=None, show_graph=False, descriptions=None):
         fts = len(session["X"][0])
     else:
         fts = session["X"].shape[1]
-    if descriptions is not None:
+    if "descriptions" in session:
         t.add_row(["Examples:", len(y), "", "", "", "Features:", fts, "", "", "", "Categories:", len(cnt), "", "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
-        t.cell_style([0,5,10], -1, {"font": "bold"})
+        t.cell_style([0,5,10], -1, {"font": "bold", "color": "#666"})
     else:
         t.add_row(["Examples:", len(y), "", "", "Features:", fts, "", "", "Categories:", len(cnt), "", ""], style={"row-toggle-background": 0, "background": "#eee", "border": "top"})
-        t.cell_style([0,4,8], -1, {"font": "bold"})
+        t.cell_style([0,4,8], -1, {"font": "bold", "color": "#666"})
     
     t.display()
 
@@ -503,75 +500,111 @@ def split_data(session,
 
 
 def set_resample(session, 
-                 mode="u",
-                 max_samples=500,
-                 max_decrease=2.0,
-                 min_samples=50,
-                 max_increase=2.0,
-                 auto=False,
+                 methods=[],
                  seed=None,
                  verbose=2,
                 ):
     """
-    Sets over- and undersampling to be used when training models.
+    Sets over- and undersampling methods to be used when training models.
 
     Args:
         session: Session object (created in load_data())
-        mode (set): Specifies which over- and undersampling methods to be used. Mode can be combinations of 'u' (random undersampling), 'o' (random oversampling) and 's' (SMOTE oversampling), for example 'us' if both random undersampling and SMOTE oversampling shall be used (default: 'u')
-        max_samples (int): Max samples for categories when undersampling (also see decrease_limit) (default: 500)
-        max_decrease (float): Max reduction factor of samples when undersampling, for example a category with 2000 samples will be undersampled to 1000 samples if max decrease is 2 regardless if max_samples is lower than 1000 (default: 2.0)
-        min_samples (int): Min samples for categories when oversampling (also see increase_limit) (default: 50)
-        max_increase (float): Max increase factor of samples when oversampling, for example a category with 100 samples will be oversampled to 200 samples if max increase is 2 regardless if min_samples is higher than 200 (default: 2.0)
-        auto (bool): Use auto mode for SMOTE oversampling instead of min_samples/increase_limit. Note that this usually increases the number of samples in the training data a lot (default: False)
+        methods (list): List of the sampling methods to use on the training data. Each entry in the list must be a dict with settings for each sampling method. The supported methods are 'u' (random undersampling), 'e' (edited nearest neighbors undersampling), 'c' (Cluster Centroids undersampling), 'o' (random oversampling), 'k' (KMEans SMOTE oversampling) and 's' (SMOTE oversampling)
+        Example:
+        [{"sampler": "s", "strategy: "custom", "min_samples": 200, "max_increase": 4}, {"sampler": "e", "strategy": "auto"}]
+        ... specifies that first is SMOTE oversampling used, then edited nearest neighbor undersampling. Strategy can be:
+        'majority': resample only the majority category (undersampling only)
+        'minority': resample only the minority category (oversampling only)
+        'not minority': resample all classes but the minority category
+        'not majority': resample all classes but the majority category
+        'all': resample all categories
+        'auto': equivalent to 'not minority' for undersampling, and 'not majority' for oversampling
+        'custom': specifies the max and min samples for over- and/or undersampling. Combines with:
+            'max_samples': Max samples of a category (undersampling only)
+            'max_decrease_factor': Specifies the highest factor by which a category is decreased (undersampling, optional)
+            'min_samples': Min samples of a category (oversampling only)
+            'max_increase_factor': Specifies the highest factor by which a category is increased (oversampling, optional)
+            'cluster': Number of clusters to use (Cluster Centroids and KMeans SMOTE only)
         seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
         verbose (int): Set verbose (output messages) level (0 for no output messages) (default: 2)
     """
     
     # Check params
     if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
-    if not check_param(mode, "mode", [str], None): return
-    for m in list(mode):
-        if m not in ["o","u","s"]:
-            error("Unsupported resample mode (must be " + colored("o", "cyan") + ", " + colored("u", "cyan") + " or " + colored("s", "cyan") + ")")
-            return
-    if len(mode) == 0:
-        error("Parameter " + colored("mode", "cyan") + " is empty")
-        return
-    if not check_param(max_samples, "max_samples", [int], expr=max_samples>=1, expr_msg="max samples must be 1 or higher"): return
-    if not check_param(max_decrease, "max_decrease", [float,int], expr=max_decrease>1, expr_msg="max decrease must be 1 or higher"): return
-    if not check_param(min_samples, "min_samples", [int], expr=min_samples>=1, expr_msg="min samples must be 1 or higher"): return
-    if not check_param(max_increase, "max_increase", [float,int], expr=max_increase>=1, expr_msg="max_increase must be 1 or higher"): return
-    if not check_param(auto, "auto", [bool]): return
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(verbose, "verbose", [int], vals=[0,1,2]): return
-    if "s" in mode and "o" in mode:
-        warning("multiple oversampling")
-    
-    session["resample"] = {
-        "mode": mode,
-        "seed": seed,
+
+    # Sampler names
+    names = {
+        "u": "Random Undersampling",
+        "e": "Edited Nearest Neighbors Undersampling",
+        "c": "Cluser Centroids Undersampling",
+        "o": "Random Oversampling",
+        "s": "SMOTE Oversampling",
+        "k": "KMeans SMOTE Oversampling",
     }
-    for m in list(mode):
-        if m == "u":
-            session["resample"]["max_samples"] = max_samples
-            session["resample"]["max_decrease"] = max_decrease
-            if verbose >= 1:
-                info("Using random undersampling with max samples " + colored(max_samples, "blue") + " and max decrease " + colored(max_decrease, "blue"))
-        elif m == "o":
-            session["resample"]["min_samples"] = min_samples
-            session["resample"]["max_increase"] = max_increase
-            if verbose >= 1:
-                info("Using random oversampling with min samples " + colored(min_samples, "blue") + " and max increase " + colored(max_increase, "blue"))
-        elif m == "s":
-            if auto:
-                session["resample"]["auto"] = 1
-                if verbose >= 1:
-                    info("Using auto SMOTE oversampling")
-            else:
-                session["resample"]["min_samples"] = min_samples
-                session["resample"]["max_increase"] = max_increase
-                if verbose >= 1:
-                    info("Using SMOTE oversampling with min samples " + colored(min_samples, "blue") + " and max increase " + colored(max_increase, "blue"))
+    
+    # Methods placeholder
+    session["resample"] = {
+        "seed": seed,
+        "methods": [],
+    }
+
+    # Check methods
+    samplers = []
+    for method in methods:
+        # Error checks
+        if method["sampler"] not in ["u","c","e","o","k","s"]:
+            error("Invalid sampler " + colored(method["sampler"], "blue") + ". Must be " + colored("'u', 'c', 'e', 'o', 'k', 's'", "cyan"))
+            return
+        if "strategy" in method and method["strategy"] not in ["majority", "minority", "not majority", "not minority", "all", "auto", "custom"]:
+            error("Invalid strategy " + colored(method["strategy"], "blue") + ". Must be " + colored("'majority', 'minority', 'not majority', 'not minority', 'all', 'auto', 'custom'", "cyan"))
+            return
+        if "strategy" not in method or method["strategy"] == "custom":
+            if method["sampler"] in ["u","c","e"] and "max_samples" not in method:
+                error("strategy 'custom' with undersampling requires 'max_samples' to be specified")
+                return
+            if method["sampler"] in ["o","k","s"] and "min_samples" not in method:
+                error("strategy 'custom' with oversampling requires 'min_samples' to be specified")
+                return
+        if method["sampler"] in ["u","c","e"] and "strategy" in method and method["strategy"] == "minority":
+            error("strategy 'minority' is not a valid strategy for undersampling")
+            return
+        if method["sampler"] in ["o","k","s"] and "strategy" in method and method["strategy"] == "majority":
+            error("strategy 'majority' is not a valid strategy for oversampling")
+            return
+        for key in method.keys():
+            if key not in ["sampler", "strategy", "clusters", "max_samples", "max_decrease_factor", "min_samples", "max_increase_factor"]:
+                error("Invalid key " + colored(key, "cyan") + " for method")
+                return
+        # Check values
+        if "max_samples" in method and not check_param(method["max_samples"], "max_samples", [int], expr=method["max_samples"]>=1, expr_msg="'max_samples' must be 1 or higher"): return
+        if "max_decrease_factor" in method and not check_param(method["max_decrease_factor"], "max_decrease_factor", [float,int], expr=method["max_decrease_factor"]>1, expr_msg="'max_decrease_factor' must be 1 or higher"): return
+        if "min_samples" in method and not check_param(method["min_samples"], "min_samples", [int], expr=method["min_samples"]>=1, expr_msg="'min_samples' must be 1 or higher"): return
+        if "max_increase_factor" in method and not check_param(method["max_increase_factor"], "max_increase_factor", [float,int], expr=method["max_increase_factor"]>=1, expr_msg="'max_increase_factor' must be 1 or higher"): return
+        if "clusters" in method and not check_param(method["clusters"], "clusters", [int], expr=method["clusters"]>=2, expr_msg="'clusters' must be 2 or higher"): return
+        if "strategy" not in method:
+            method["strategy"] = "custom"
+        
+        # All error checks done!
+        session["resample"]["methods"].append(method)
+        samplers.append(method["sampler"])
+        info("Using sampler " + colored(names[method["sampler"]], "cyan") + " with sampling strategy " + colored(method["strategy"], "cyan"))
+        
+    # Check for multiple over/undersampling
+    no = 0
+    nu = 0
+    for s in samplers:
+        if s in ["u","c","e"]:
+            nu += 1
+        if s in ["o","k","s"]:
+            no += 1
+    if no > 1:
+        warning("multiple oversampling")
+    if nu > 1:
+        warning("multiple undersampling")
+        
+    # Reset eval mode (for reload)
     session["eval_mode"] = ""
     
     # Show how resampling affects training data
@@ -679,7 +712,7 @@ class KerasWrapper:
     # Train Keras model
     def fit(self, X, y):
         if type(y[0]) == str:
-            error("Keras models require numerical categories. Set " + colored("encode_labels", "cyan") + " to " + colored("True", "blue") + " when calling " + colored("load_data()", "cyan"))
+            error("Keras models require numerical categories. Set " + colored("encode_categories", "cyan") + " to " + colored("True", "blue") + " when calling " + colored("load_data()", "cyan"))
             return
         
         # One-hot encode labels
@@ -737,6 +770,7 @@ def evaluate_model(model,
                    top_n=None,
                    categories=False,
                    max_categories=None,
+                   categories_topn=False,
                    sidx=0,
                    max_errors=None,
                    confusionmatrix=False,
@@ -759,6 +793,7 @@ def evaluate_model(model,
         top_n (int or None): Set if calculating metrics for top n results instead of only the top result. If None, metrics will only be calculated for the top result (default: None)
         categories (bool): True if table with metrics per category shall be shown (default: False)
         max_categories (int or None): Set to limit the number of categories to be shown in the categories table. If None, all categories are shown (default: None)
+        categories_topn (bool): True for using top n predictions for the categories table (default: False)
         sidx (int): When limiting the number of categories to be shown in the categories table, sidx specifies the start index of the first category in the table (default: 0)
         max_errors (int or None): Set to limit the number of errors to be shown for each category in the categories table. If None, all errors are shown (default: None)
         confusionmatrix (bool): True of confusion matrix shall be shown (default: False)
@@ -781,6 +816,7 @@ def evaluate_model(model,
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(top_n, "top_n", [int,None], expr=top_n is None or top_n>=2, expr_msg="top n must be 2 or higher"): return
     if not check_param(categories, "categories", [bool]): return
+    if not check_param(categories_topn, "categories_topn", [bool]): return
     if not check_param(max_categories, "max_categories", [int,None], expr=max_categories is None or max_categories>=1, expr_msg="max categories must be at least 1"): return
     if not check_param(max_errors, "max_errors", [int,None], expr=max_errors is None or max_errors>=1, expr_msg="max errors must be at least 1"): return
     if not check_param(sidx, "sidx", [int], expr=sidx>=0, expr_msg="sidx cannot be negative"): return
@@ -864,22 +900,16 @@ def evaluate_model(model,
                         model_ccv = model_obj
                     else:
                         model_ccv = CalibratedClassifierCV(model_obj, cv="prefit").fit(X_train, y_train)
-                    for Xi,yi in zip(X_test, y_test):
-                        if hasattr(model, "predict_proba"):
-                            Xi = [Xi]
-                        probs = model_ccv.predict_proba(Xi)
-                        best_codes = np.argsort(-probs, axis=1)[:,:top_n][0]
-                        best_prob = np.sort(-probs, axis=1)[:,:top_n][0]
-                        codes = model_ccv.classes_
-                        ypn = False
-                        for i,c in enumerate(best_codes):
-                            if codes[c] == yi:
-                                ypn = True
-                        if ypn:
+                    probs = model_ccv.predict_proba(X_test)
+                    for py,yi in zip(probs, y_test):
+                        tpreds = [[p,l] for p,l in zip(py,model_ccv.classes_)]
+                        tpreds = sorted(tpreds, key=lambda x: x[0], reverse=True)
+                        tpreds = [l[1] for l in tpreds[:top_n]] 
+                        if yi in tpreds:
                             y_pred_topn.append(yi)
                         else:
-                            y_pred_topn.append(codes[best_codes[0]])
-    
+                            y_pred_topn.append(tpreds[0])
+            
             session["y_pred"] = y_pred
             session["y_actual"] = y_actual
             if top_n is not None:
@@ -887,7 +917,7 @@ def evaluate_model(model,
                 session["top_n"] = top_n
             
             en = time.time()
-            print(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
+            info(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
             
         #
         # Train-test split
@@ -913,25 +943,21 @@ def evaluate_model(model,
                     model_ccv = model
                 else:
                     model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(X_train, y_train)
-                for Xi,yi in zip(session["X_test"], session["y_test"]):
-                    probs = model_ccv.predict_proba([Xi])
-                    best_codes = np.argsort(-probs, axis=1)[:,:top_n][0]
-                    best_prob = np.sort(-probs, axis=1)[:,:top_n][0]
-                    codes = model_ccv.classes_
-                    ypn = False
-                    for i,c in enumerate(best_codes):
-                        if codes[c] == yi:
-                            ypn = True
-                    if ypn:
+                probs = model_ccv.predict_proba(session["X_test"])
+                for py,yi in zip(probs, session["y_test"]):
+                    tpreds = [[p,l] for p,l in zip(py,model_ccv.classes_)]
+                    tpreds = sorted(tpreds, key=lambda x: x[0], reverse=True)
+                    tpreds = [l[1] for l in tpreds[:top_n]] 
+                    if yi in tpreds:
                         y_pred_topn.append(yi)
                     else:
-                        y_pred_topn.append(codes[best_codes[0]])
+                        y_pred_topn.append(tpreds[0])
                 session["y_pred_topn"] = y_pred_topn
                 session["top_n"] = top_n
                 
             en = time.time()
             mode = "split"
-            print("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
+            info("Building and evaluating model using train-test split took " + colored(f"{en-st:.2f}", "blue") + " sec")
             
         #
         # All data
@@ -955,25 +981,21 @@ def evaluate_model(model,
                     model_ccv = model
                 else:
                     model_ccv = CalibratedClassifierCV(model, cv="prefit").fit(X, y)
-                for Xi,yi in zip(session["X"], session["y"]):
-                    probs = model_ccv.predict_proba([Xi])
-                    best_codes = np.argsort(-probs, axis=1)[:,:top_n][0]
-                    best_prob = np.sort(-probs, axis=1)[:,:top_n][0]
-                    codes = model_ccv.classes_
-                    ypn = False
-                    for i,c in enumerate(best_codes):
-                        if codes[c] == yi:
-                            ypn = True
-                    if ypn:
+                probs = model_ccv.predict_proba(session["X"])
+                for py,yi in zip(probs, session["y"]):
+                    tpreds = [[p,l] for p,l in zip(py,model_ccv.classes_)]
+                    tpreds = sorted(tpreds, key=lambda x: x[0], reverse=True)
+                    tpreds = [l[1] for l in tpreds[:top_n]] 
+                    if yi in tpreds:
                         y_pred_topn.append(yi)
                     else:
-                        y_pred_topn.append(codes[best_codes[0]])
+                        y_pred_topn.append(tpreds[0])
                 session["y_pred_topn"] = y_pred_topn
                 session["top_n"] = top_n
             
             en = time.time()
             mode = "all"
-            print("Building and evaluating model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
+            info("Building and evaluating model on all data took " + colored(f"{en-st:.2f}", "blue") + " sec")
         else:
             warning("Invalid mode " + colored(mode, "cyan"))
             return
@@ -1006,7 +1028,7 @@ def evaluate_model(model,
         t.add_row(["F1-score:", float(f1_score(session["y_actual"], session["y_pred"], average="weighted"))])
         t.add_row(["Precision:", float(precision_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
         t.add_row(["Recall:", float(recall_score(session["y_actual"], session["y_pred"], average="weighted", zero_division=False))])
-        if "y_pred_topn" in session:
+        if "y_pred_topn" in session and top_n is not None:
             t.add_row([f"Accuracy (top {session['top_n']}):", float(accuracy_score(session["y_actual"], session["y_pred_topn"]))])
             t.add_row([f"F1-score (top {session['top_n']}):", float(f1_score(session["y_actual"], session["y_pred_topn"], average="weighted"))])
         print()
@@ -1016,7 +1038,10 @@ def evaluate_model(model,
         if categories:
             # Generate sorted list of category results
             cats = np.unique(session["y_actual"])
-            cm = confusion_matrix(session["y_actual"], session["y_pred"])
+            if categories_topn and top_n is not None:
+                cm = confusion_matrix(session["y_actual"], session["y_pred_topn"])
+            else:
+                cm = confusion_matrix(session["y_actual"], session["y_pred"])
             tmp = []
             for i,cat,r in zip(range(0,len(cats)),cats,cm):
                 # Generate errors
@@ -1024,17 +1049,17 @@ def evaluate_model(model,
                 for j in range(0,len(r)):
                     if i != j and r[j] > 0:
                         errs.append([r[j], cats[j]])
-                tmp.append([r[i]/sum(r),cat,sum(r),errs])
+                tmp.append([r[i]/sum(r),cat,r[i],sum(r),errs])
             tmp = sorted(tmp, reverse=True)
             # Show table
             if "descriptions" not in session:
-                t = CustomizedTable(["Category", "Accuracy", "n"], style={"row-toggle-background": 0})
+                t = CustomizedTable(["Category", "Accuracy", "Correct", "n"], style={"row-toggle-background": 0})
             else:
-                t = CustomizedTable(["Category", "Accuracy", "n", "Description"], style={"row-toggle-background": 0})
-                t.column_style("Description", {"color": "#05760f"})
+                t = CustomizedTable(["Category", "Accuracy", "Correct", "n", "Description"], style={"row-toggle-background": 0})
+                t.column_style("Description", {"color": "#666"}) # 05760f
             t.column_style(0, {"color": "#048512"})
             t.column_style(1, {"color": "percent", "num-format": "pct-2"})
-            t.column_style(2, {"color": "value"})
+            t.column_style([2,3], {"color": "value"})
             if max_categories in [-1,0,None]:
                 max_categories = len(tmp)
             for r in tmp[sidx:sidx+max_categories]:
@@ -1042,12 +1067,15 @@ def evaluate_model(model,
                 if "label_encoder" in session:
                     l = session["label_encoder"].inverse_transform([cat])[0]
                     cat = f"{l} ({cat})"
-                row = [cat, float(r[0]), r[2]]
+                row = [cat, float(r[0]), r[2], r[3]]
                 if "descriptions" in session:
-                    row.append(session["descriptions"][r[1]])
+                    if r[1] in session["descriptions"]:
+                        row.append(session["descriptions"][r[1]])
+                    else:
+                        row.append("")
                 t.add_row(row, style={"border": "top", "background": "#eee"})
-                if len(r[3]) > 0:
-                    errs = sorted(r[3], reverse=True)
+                if len(r[4]) > 0:
+                    errs = sorted(r[4], reverse=True)
                     if max_errors in [-1,0,None]:
                         max_errors = len(errs)
                     errs = errs[:max_errors]
@@ -1056,12 +1084,15 @@ def evaluate_model(model,
                         if "label_encoder" in session:
                             l = session["label_encoder"].inverse_transform([ecat])[0]
                             ecat = f"{l} ({ecat})"
-                        erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0]]
+                        erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0], ""]
                         if "descriptions" in session:
-                            erow.append(session["descriptions"][err[1]])
+                            if err[1] in session["descriptions"]:
+                                erow.append(session["descriptions"][err[1]])
+                            else:
+                                erow.append("")
                         t.add_row(erow)
                         if "descriptions" in session:
-                            t.cell_style(3,-1, {"color": "#fb6d6d"})
+                            t.cell_style(4,-1, {"color": "#666"}) # fb6d6d
                         t.cell_style(0,-1, {"color": "#fd8e8a"})
                         t.cell_style([1,2],-1, {"color": "#aaa4fa"})
             print()
