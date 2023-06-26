@@ -864,10 +864,7 @@ def evaluate_model(model,
                     return clone(_model, safe=True)
             
             # Get folds
-            if seed is not None:
-                cvm = KFold(n_splits=cv, random_state=seed, shuffle=True)
-            else:
-                cvm = KFold(n_splits=cv, shuffle=False)
+            cvm = KFold(n_splits=cv, shuffle=False)
                 
             # Run cross validation
             y_pred = []

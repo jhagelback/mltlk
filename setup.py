@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name="mltlk",
-    version="0.1.30",
+    version="0.1.31",
     author="Johan Hagelbäck",
     author_email="johan.hagelback@gmail.com",
     description="Toolkit for making machine learning easier",
