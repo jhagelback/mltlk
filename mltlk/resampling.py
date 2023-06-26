@@ -120,8 +120,17 @@ def resample(session, X, y, verbose=1):
             rsmp = RandomOverSampler(random_state=session["resample"]["seed"], sampling_strategy=strategy)
             X, y = rsmp.fit_resample(X, y)
         if method["sampler"] == "s":
-            rsmp = SMOTE(random_state=session["resample"]["seed"], sampling_strategy=strategy)
-            X, y = rsmp.fit_resample(X, y)
+            knn = 5
+            cnt = Counter(y)
+            minn = min(cnt.values())
+            if minn < knn and minn > 1:
+                warning("Min samples " + colored(minn, "blue") + " is less than default neighbors " + colored("5", "blue") + ". Setting neighbors to " + colored(minn, "blue"))
+                knn = minn-1 # For some reason, the SMOTE code uses 1 less than the specified neighbors
+            if minn == 1:
+                error("SMOTE requires at least 2 examples of the minority class, found 1")
+            else:
+                rsmp = SMOTE(random_state=session["resample"]["seed"], sampling_strategy=strategy, k_neighbors=knn)
+                X, y = rsmp.fit_resample(X, y)
         if method["sampler"] == "k":
             clusters = 8
             if "clusters" in method:
