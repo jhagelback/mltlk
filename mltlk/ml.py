@@ -766,7 +766,6 @@ def evaluate_model(model,
                    session, 
                    reload=False, 
                    mode="CV-5",
-                   seed=None,
                    top_n=None,
                    categories=False,
                    max_categories=None,
@@ -789,7 +788,6 @@ def evaluate_model(model,
         session: Session object (created in load_data())
         reload (bool): Set to True of model shall be rebuilt. If False, previously built model will be used (if any) (default: False) 
         mode (str): Set evaluation mode: 'split' uses train-test split (see split_data()), 'all' trains and evaluates the model on all data and 'CV-n' uses n-fold cross validation (default: 'CV-5')
-        seed (int or None): Seed value to be used by the randomizer. If None, no seed will be used and results can differ between runs (default: None)
         top_n (int or None): Set if calculating metrics for top n results instead of only the top result. If None, metrics will only be calculated for the top result (default: None)
         categories (bool): True if table with metrics per category shall be shown (default: False)
         max_categories (int or None): Set to limit the number of categories to be shown in the categories table. If None, all categories are shown (default: None)
@@ -813,7 +811,6 @@ def evaluate_model(model,
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
     if not check_param(mode, "mode", [str], expr=mode=="all" or mode=="split" or mode.startswith("CV-"), expr_msg="mode must be split, CV-# or all"): return
-    if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(top_n, "top_n", [int,None], expr=top_n is None or top_n>=2, expr_msg="top n must be 2 or higher"): return
     if not check_param(categories, "categories", [bool]): return
     if not check_param(categories_topn, "categories_topn", [bool]): return
