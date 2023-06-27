@@ -86,18 +86,23 @@ def load_data(file,
     if not check_param(preprocess, "preprocess", [str,None], vals=["normalize", "scale", "one-hot", "ordinal", "bag-of-words", "word2vec", "embeddings"]): return None
     session["preprocess"] = preprocess
     if not check_param(shuffle_data, "shuffle_data", [bool]): return None
+    if not check_param(seed, "seed", [int,None]): return None
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return None
-    if not check_param(min_samples, "min_samples", [int,None], expr=min_samples is None or min_samples>1, expr_msg="min samples higher than 1"): return None
+    if not check_param(min_samples, "min_samples", [int,None], expr=min_samples is None or min_samples>1, expr_msg="min_samples must be at least 1"): return None
     if not check_param(encode_categories, "encode_categories", [bool]): return None
     if not check_param(category_descriptions, "category_descriptions", [dict,None]): return None
     if not check_param(clean_text, "clean_text", [str,None], vals=["letters", "letters digits"]): return None
     if not check_param(stopwords, "stopwords", [list,str,None]): return None
-    if not check_param(max_features, "max_features", [int,None], expr=max_features is None or max_features>1, expr_msg="max features must be 1 or higher"): return None
-    if not check_param(tf_idf, "tf_idf", [bool], None): return None
-    if not check_param(w2v_vector_size, "w2v_vector_size", [int], expr=w2v_vector_size>1, expr_msg="vector size must be larger than 1"): return None
-    if not check_param(w2v_rebuild, "w2v_rebuild", [bool], None): return None
-    if not check_param(embeddings_size, "embeddings_size", [int], expr=embeddings_size>1, expr_msg="embeddings size must be larger than 1"): return None
-    if not check_param(embeddings_max_length, "embeddings_max_length", [int,None], expr=embeddings_max_length is None or embeddings_max_length>1, expr_msg="embeddings max length must be larger than 1"): return None
+    if not check_param(max_features, "max_features", [int,None]): return None
+    if not check_param(max_features, "max_features", [int,None], expr=max_features is None or max_features>1, expr_msg="max_features must be at least 1"): return None
+    if not check_param(tf_idf, "tf_idf", [bool]): return None
+    if not check_param(w2v_vector_size, "w2v_vector_size", [int]): return None
+    if not check_param(w2v_vector_size, "w2v_vector_size", [int], expr=w2v_vector_size>1, expr_msg="vector_size must be larger than 1"): return None
+    if not check_param(w2v_rebuild, "w2v_rebuild", [bool]): return None
+    if not check_param(embeddings_size, "embeddings_size", [int]): return None
+    if not check_param(embeddings_size, "embeddings_size", [int], expr=embeddings_size>1, expr_msg="embeddings_size must be larger than 1"): return None
+    if not check_param(embeddings_max_length, "embeddings_max_length", [int,None]): return None
+    if not check_param(embeddings_max_length, "embeddings_max_length", [int,None], expr=embeddings_max_length is None or embeddings_max_length>1, expr_msg="embeddings_max_length must be larger than 1"): return None
     if not check_param(verbose, "verbose", [int], vals=[0,1]): return None
     
     # Load data
@@ -323,7 +328,8 @@ def data_stats(session, max_rows=None, show_graph=False):
     
     # Check params
     if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
-    if not check_param(max_rows, "max_rows", [int,None], expr=max_rows is None or max_rows>=1, expr_msg="max rows must be at least 1"): return None
+    if not check_param(max_rows, "max_rows", [int,None]): return None
+    if not check_param(max_rows, "max_rows", [int,None], expr=max_rows is None or max_rows>=1, expr_msg="max_rows must be at least 1"): return None
     if not check_param(show_graph, "show_graph", [bool]): return None
     
     # Regression
@@ -459,7 +465,9 @@ def split_data(session,
     
     # Check params
     if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
-    if not check_param(test_size, "test_size", [float,int], expr=test_size>0 and test_size<1, expr_msg="test size must be between 0 and 1"): return
+    if not check_param(test_size, "test_size", [float,int]): return
+    if not check_param(test_size, "test_size", [float,int], expr=test_size>0 and test_size<1, expr_msg="test_size must be between 0 and 1"): return
+    if not check_param(seed, "seed", [int,None]): return
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(stratify, "stratify", [bool]): return
     
@@ -531,6 +539,7 @@ def set_resample(session,
     
     # Check params
     if not check_param(session, "session", [dict], expr=session is not None, expr_msg="session is None"): return
+    if not check_param(seed, "seed", [int,None]): return
     if not check_param(seed, "seed", [int,None], expr=seed is None or seed>=0, expr_msg="seed cannot be negative"): return
     if not check_param(verbose, "verbose", [int], vals=[0,1,2]): return
 
@@ -578,11 +587,16 @@ def set_resample(session,
                 error("Invalid key " + colored(key, "cyan") + " for method")
                 return
         # Check values
+        if "max_samples" in method and not check_param(method["max_samples"], "max_samples", [int]): return
         if "max_samples" in method and not check_param(method["max_samples"], "max_samples", [int], expr=method["max_samples"]>=1, expr_msg="'max_samples' must be 1 or higher"): return
+        if "max_decrease_factor" in method and not check_param(method["max_decrease_factor"], "max_decrease_factor", [float,int]): return
         if "max_decrease_factor" in method and not check_param(method["max_decrease_factor"], "max_decrease_factor", [float,int], expr=method["max_decrease_factor"]>1, expr_msg="'max_decrease_factor' must be 1 or higher"): return
+        if "min_samples" in method and not check_param(method["min_samples"], "min_samples", [int]): return
         if "min_samples" in method and not check_param(method["min_samples"], "min_samples", [int], expr=method["min_samples"]>=1, expr_msg="'min_samples' must be 1 or higher"): return
+        if "max_increase_factor" in method and not check_param(method["max_increase_factor"], "max_increase_factor", [float,int]): return
         if "max_increase_factor" in method and not check_param(method["max_increase_factor"], "max_increase_factor", [float,int], expr=method["max_increase_factor"]>=1, expr_msg="'max_increase_factor' must be 1 or higher"): return
-        if "clusters" in method and not check_param(method["clusters"], "clusters", [int], expr=method["clusters"]>=2, expr_msg="'clusters' must be 2 or higher"): return
+        if "clusters" in method and not check_param(method["clusters"], "clusters", [int]): return
+        if "clusters" in method and not check_param(method["clusters"], "clusters", [int], expr=method["clusters"]>=2, expr_msg="clusters must be 2 or higher"): return
         if "strategy" not in method:
             method["strategy"] = "custom"
         
@@ -794,7 +808,7 @@ def evaluate_model(model,
         categories_topn (bool): True for using top n predictions for the categories table (default: False)
         sidx (int): When limiting the number of categories to be shown in the categories table, sidx specifies the start index of the first category in the table (default: 0)
         max_errors (int or None): Set to limit the number of errors to be shown for each category in the categories table. If None, all errors are shown (default: None)
-        confusionmatrix (bool): True of confusion matrix shall be shown (default: False)
+        confusionmatrix (bool): True if confusion matrix shall be shown (default: False)
         cm_norm (str or None): Normalization mode for the confusion matrix ('true', 'pred', 'all' or None) (default: None)
         epochs (int): Number of epochs to be used for Keras models (default: 5)
         batch_size (int): Batch size to be used for Keras models (default: 32)
@@ -810,17 +824,24 @@ def evaluate_model(model,
     if "sklearn." not in str(type(model)) and "keras." not in str(type(model)):
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
+    if not check_param(mode, "mode", [str]): return
     if not check_param(mode, "mode", [str], expr=mode=="all" or mode=="split" or mode.startswith("CV-"), expr_msg="mode must be split, CV-# or all"): return
-    if not check_param(top_n, "top_n", [int,None], expr=top_n is None or top_n>=2, expr_msg="top n must be 2 or higher"): return
+    if not check_param(top_n, "top_n", [int,None]): return
+    if not check_param(top_n, "top_n", [int,None], expr=top_n is None or top_n>=2, expr_msg="top_n must be 2 or higher"): return
     if not check_param(categories, "categories", [bool]): return
     if not check_param(categories_topn, "categories_topn", [bool]): return
-    if not check_param(max_categories, "max_categories", [int,None], expr=max_categories is None or max_categories>=1, expr_msg="max categories must be at least 1"): return
-    if not check_param(max_errors, "max_errors", [int,None], expr=max_errors is None or max_errors>=1, expr_msg="max errors must be at least 1"): return
+    if not check_param(max_categories, "max_categories", [int,None]): return
+    if not check_param(max_categories, "max_categories", [int,None], expr=max_categories is None or max_categories>=1, expr_msg="max_categories must be at least 1"): return
+    if not check_param(max_errors, "max_errors", [int,None]): return
+    if not check_param(max_errors, "max_errors", [int,None], expr=max_errors is None or max_errors>=1, expr_msg="max_errors must be at least 1"): return
+    if not check_param(sidx, "sidx", [int]): return
     if not check_param(sidx, "sidx", [int], expr=sidx>=0, expr_msg="sidx cannot be negative"): return
     if not check_param(confusionmatrix, "confusionmatrix", [bool]): return
     if not check_param(cm_norm, "cm_norm", [str,None], ["true","pred","all"]): return
+    if not check_param(epochs, "epochs", [int]): return
     if not check_param(epochs, "epochs", [int], expr=epochs>=1, expr_msg="epochs must be at least 1"): return
-    if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch size must be at least 1"): return
+    if not check_param(batch_size, "batch_size", [int]): return
+    if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch_size must be at least 1"): return
     
     # Check if we have a Keras model
     if "keras." in str(type(model)):
@@ -1137,8 +1158,10 @@ def build_model(model,
         error("Unsupported model type. Only Scikit-learn and Keras models are supported")
         return
     if not check_param(mode, "mode", [str], vals=["all", "split"]): return
+    if not check_param(epochs, "epochs", [int]): return
     if not check_param(epochs, "epochs", [int], expr=epochs>=1, expr_msg="epochs must be at least 1"): return
-    if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch size must be at least 1"): return
+    if not check_param(batch_size, "batch_size", [int]): return
+    if not check_param(batch_size, "batch_size", [int], expr=batch_size>=1, expr_msg="batch_size must be at least 1"): return
         
     # Check if we have a Keras model
     if "keras." in str(type(model)):

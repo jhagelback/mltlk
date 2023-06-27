@@ -4,6 +4,9 @@ from customized_table import *
 from customized_chart import *
 import numpy as np
 from collections import Counter
+import matplotlib.pyplot as plt
+from sklearn.inspection import DecisionBoundaryDisplay
+from sklearn.preprocessing import LabelEncoder
 
 
 def plot_data(session, mode=None, horizontal=True, category=None, lim=None, table=True, plot=True, size=(14,6)):
@@ -187,3 +190,68 @@ def plot_data_per_category(session, mode=None):
         cats = np.unique(session["y_original"])
         for cat in cats:
             plot_data(session, category=cat, plot=False)
+
+
+def plot_decision_borders(session, title=True, cmap="Spectral", eps=1, markersize=20):
+    """
+    Plot decision borders for two-dimensional datasets.
+
+    Args:
+        session: Session object (created in load_data())
+        title (bool or str): Title for the plot. If True, title is generated from the model. If False, no title is used (default: True) 
+        cmap (str): Colormap to be used (see https://matplotlib.org/stable/gallery/color/colormap_reference.html) (default: 'Spectal')
+        eps (int,float): Extends the min/max values of X in the plot (default: 1.0)
+        markersize (int): Size of the markers for the actual data points (default: 20)
+    """
+    # Check params
+    if not check_param(title, "title", [bool,str]): return None
+    if not check_param(eps, "eps", [int,float]): return None
+    if not check_param(eps, "eps", [int,float], expr=eps>=0, expr_msg="eps must be 0 or higher"): return None
+    if not check_param(markersize, "markersize", [int]): return None
+    if not check_param(markersize, "markersize", [int], expr=markersize>=1, expr_msg="markersize must be at least 1"): return None
+    if not check_param(cmap, "cmap", [str]): return None
+    cmaps = plt.colormaps()
+    if cmap not in cmaps:
+        error(colored(cmap, "cyan") + " is not a valid colormap, see https://matplotlib.org/stable/gallery/color/colormap_reference.html")
+        return None
+
+    # Check if two-dimensional
+    if type(session["X"]) == list:
+        fts = len(session["X"][0])
+    else:
+        fts = session["X"].shape[1]
+    if fts != 2:
+        error("Decision borders can only be shown for two-dimensional datasets (found " + colored(fts, "blue") + " dimensions)")
+        return
+    
+    # Check if model has been built
+    if "model" not in session:
+        error("Final model has not been built. Use the function " + colored("build_model()", "cyan"))
+        return
+    
+    # Targets
+    target = session["y"]
+    if type(target[0]) != int:
+        target = LabelEncoder().fit_transform(target)
+    
+    disp = DecisionBoundaryDisplay.from_estimator(session["model"], 
+                                                  session["X"], 
+                                                  response_method="predict", 
+                                                  alpha=0.5, 
+                                                  grid_resolution=250, 
+                                                  eps=eps,
+                                                  xlabel=session["columns"][0],
+                                                  ylabel=session["columns"][1],
+                                                  cmap=cmap
+                                                 )
+    disp.ax_.scatter(session["X"][:,0], session["X"][:,1], c=target, edgecolor="k", s=markersize, cmap=cmap)
+    plt.axis("tight")
+    if type(title) == str:
+        plt.title(title)
+    if title == True:
+        mstr = str(session["model"])
+        if "(" in mstr:
+            plt.title(mstr.split("(")[0])
+        else:
+            plt.title(mstr)
+    plt.show()
