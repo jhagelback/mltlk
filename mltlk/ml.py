@@ -625,7 +625,10 @@ def set_resample(session,
     if verbose >= 2:
         # Split data (if not already splitted)
         if "X_train" not in session:
-            split_data(session)
+            if "seed" in session["resample"]:
+                split_data(session, seed=session["resample"]["seed"])
+            else:
+                split_data(session)
         ycnt_orig = Counter(session["y_train"])
         X, y = resample(session, session["X_train"], session["y_train"], verbose=0)
         ycnt_rsmp = Counter(y)
