@@ -120,16 +120,16 @@ def resample(session, X, y, verbose=1):
             rsmp = RandomOverSampler(random_state=session["resample"]["seed"], sampling_strategy=strategy)
             X, y = rsmp.fit_resample(X, y)
         if method["sampler"] == "s":
-            knn = 5
+            # SMOTE requires samples >= neighbors, but setting k_neighbors to min samples does not seem to work
+            # Therefore, Random OS is used instead if samples < neighbors
             cnt = Counter(y)
             minn = min(cnt.values())
-            if minn < knn and minn > 1:
-                warning("Min samples " + colored(minn, "blue") + " is less than default neighbors " + colored("5", "blue") + ". Setting neighbors to " + colored(minn, "blue"))
-                knn = minn-1 # For some reason, the SMOTE code uses 1 less than the specified neighbors
-            if minn == 1:
-                error("SMOTE requires at least 2 examples of the minority class, found 1")
+            if minn < 6:
+                warning(f"SMOTE requires at least 6 samples, but {minn} was found. Using Random Oversampling instead")
+                rsmp = RandomOverSampler(random_state=session["resample"]["seed"], sampling_strategy=strategy)
+                X, y = rsmp.fit_resample(X, y)
             else:
-                rsmp = SMOTE(random_state=session["resample"]["seed"], sampling_strategy=strategy, k_neighbors=knn)
+                rsmp = SMOTE(random_state=session["resample"]["seed"], sampling_strategy=strategy)
                 X, y = rsmp.fit_resample(X, y)
         if method["sampler"] == "k":
             clusters = 8
