@@ -154,6 +154,13 @@ def load_stopwords(stopwordslist, verbose=1):
     # Check if no stopwords
     if stopwordslist in [None, "", []]:
         return None
+
+    # Check if nltk is downloaded
+    try:
+        stopwords.words("english")
+    except:
+        import nltk
+        nltk.download("stopwords")
     
     # Convert to list (if string)
     if type(stopwordslist) == str:
