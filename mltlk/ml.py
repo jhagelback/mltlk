@@ -935,7 +935,7 @@ def evaluate_model(model,
                 session["top_n"] = top_n
             
             en = time.time()
-            info(f"Building and evaluating model using {cv}-fold cross validaton took " + colored(f"{en-st:.2f}", "blue") + " sec")
+            info(f"Building and evaluating model using {cv}-fold cross validation took " + colored(f"{en-st:.2f}", "blue") + " sec")
             
         #
         # Train-test split
@@ -1074,7 +1074,7 @@ def evaluate_model(model,
                 t = CustomizedTable(["Category", "Accuracy", "Correct", "n"], style={"row-toggle-background": 0})
             else:
                 t = CustomizedTable(["Category", "Accuracy", "Correct", "n", "Description"], style={"row-toggle-background": 0})
-                t.column_style("Description", {"color": "#666"}) # 05760f
+                t.column_style("Description", {"color": "#666"})
             t.column_style(0, {"color": "#048512"})
             t.column_style(1, {"color": "percent", "num-format": "pct-2"})
             t.column_style([2,3], {"color": "value"})
@@ -1110,7 +1110,7 @@ def evaluate_model(model,
                                 erow.append("")
                         t.add_row(erow)
                         if "descriptions" in session:
-                            t.cell_style(4,-1, {"color": "#666"}) # fb6d6d
+                            t.cell_style(4,-1, {"color": "#666"})
                         t.cell_style(0,-1, {"color": "#fd8e8a"})
                         t.cell_style([1,2],-1, {"color": "#aaa4fa"})
             print()
