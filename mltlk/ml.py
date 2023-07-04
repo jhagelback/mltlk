@@ -779,6 +779,78 @@ class KerasWrapper:
         self.fitted = False
         
 
+def generate_categories(session, cm, cats, max_categories, sidx, max_errors, label=""):
+    """
+    Builds a classification or regression model and evaluates it.
+
+    Args:
+        session: Session object (created in load_data())
+        cm: Confusion matrix
+        cats (set): Unique categories 
+        max_categories (int or None): Set to limit the number of categories to be shown in the categories table. If None, all categories are shown (default: None)
+        sidx (int): When limiting the number of categories to be shown in the categories table, sidx specifies the start index of the first category in the table (default: 0)
+        max_errors (int or None): Set to limit the number of errors to be shown for each category in the categories table. If None, all errors are shown (default: None)
+
+    Returns:
+        Categories table (CustomizedTable)
+    """
+    
+    tmp = []
+    for i,cat,r in zip(range(0,len(cats)),cats,cm):
+        # Generate errors
+        errs = []
+        for j in range(0,len(r)):
+            if i != j and r[j] > 0:
+                errs.append([r[j], cats[j]])
+        tmp.append([r[i]/sum(r),cat,r[i],sum(r),errs])
+    tmp = sorted(tmp, reverse=True)
+    # Show table
+    if "descriptions" not in session:
+        t = CustomizedTable([f"Category {label}", "Accuracy", "Correct", "n"], style={"row-toggle-background": 0})
+    else:
+        t = CustomizedTable([f"Category {label}", "Accuracy", "Correct", "n", "Description"], style={"row-toggle-background": 0})
+        t.column_style("Description", {"color": "#666"})
+    t.column_style(0, {"color": "#048512"})
+    t.column_style(1, {"color": "percent", "num-format": "pct-2"})
+    t.column_style([2,3], {"color": "value"})
+    if max_categories in [-1,0,None]:
+        max_categories = len(tmp)
+    for r in tmp[sidx:sidx+max_categories]:
+        cat = r[1]
+        if "label_encoder" in session:
+            l = session["label_encoder"].inverse_transform([cat])[0]
+            cat = f"{l} ({cat})"
+        row = [cat, float(r[0]), r[2], r[3]]
+        if "descriptions" in session:
+            if r[1] in session["descriptions"]:
+                row.append(session["descriptions"][r[1]])
+            else:
+                row.append("")
+        t.add_row(row, style={"border": "top", "background": "#eee"})
+        if len(r[4]) > 0:
+            errs = sorted(r[4], reverse=True)
+            if max_errors in [-1,0,None]:
+                max_errors = len(errs)
+            errs = errs[:max_errors]
+            for err in errs:
+                ecat = err[1]
+                if "label_encoder" in session:
+                    l = session["label_encoder"].inverse_transform([ecat])[0]
+                    ecat = f"{l} ({ecat})"
+                erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0], ""]
+                if "descriptions" in session:
+                    if err[1] in session["descriptions"]:
+                        erow.append(session["descriptions"][err[1]])
+                    else:
+                        erow.append("")
+                t.add_row(erow)
+                if "descriptions" in session:
+                    t.cell_style(4,-1, {"color": "#666"})
+                t.cell_style(0,-1, {"color": "#fd8e8a"})
+                t.cell_style([1,2],-1, {"color": "#aaa4fa"})
+    return t
+
+
 def evaluate_model(model, 
                    session, 
                    reload=False, 
@@ -786,7 +858,6 @@ def evaluate_model(model,
                    top_n=None,
                    categories=False,
                    max_categories=None,
-                   categories_topn=False,
                    sidx=0,
                    max_errors=None,
                    confusionmatrix=False,
@@ -808,7 +879,6 @@ def evaluate_model(model,
         top_n (int or None): Set if calculating metrics for top n results instead of only the top result. If None, metrics will only be calculated for the top result (default: None)
         categories (bool): True if table with metrics per category shall be shown (default: False)
         max_categories (int or None): Set to limit the number of categories to be shown in the categories table. If None, all categories are shown (default: None)
-        categories_topn (bool): True for using top n predictions for the categories table (default: False)
         sidx (int): When limiting the number of categories to be shown in the categories table, sidx specifies the start index of the first category in the table (default: 0)
         max_errors (int or None): Set to limit the number of errors to be shown for each category in the categories table. If None, all errors are shown (default: None)
         confusionmatrix (bool): True if confusion matrix shall be shown (default: False)
@@ -832,7 +902,6 @@ def evaluate_model(model,
     if not check_param(top_n, "top_n", [int,None]): return
     if not check_param(top_n, "top_n", [int,None], expr=top_n is None or top_n>=2, expr_msg="top_n must be 2 or higher"): return
     if not check_param(categories, "categories", [bool]): return
-    if not check_param(categories_topn, "categories_topn", [bool]): return
     if not check_param(max_categories, "max_categories", [int,None]): return
     if not check_param(max_categories, "max_categories", [int,None], expr=max_categories is None or max_categories>=1, expr_msg="max_categories must be at least 1"): return
     if not check_param(max_errors, "max_errors", [int,None]): return
@@ -1056,65 +1125,19 @@ def evaluate_model(model,
         if categories:
             # Generate sorted list of category results
             cats = np.unique(session["y_actual"])
-            if categories_topn and top_n is not None:
-                cm = confusion_matrix(session["y_actual"], session["y_pred_topn"])
+            if top_n is None:
+                cm = confusion_matrix(session["y_actual"], session["y_pred"])
+                t = generate_categories(session, cm, cats, max_categories, sidx, max_errors)
+                print()
+                t.display()
             else:
                 cm = confusion_matrix(session["y_actual"], session["y_pred"])
-            tmp = []
-            for i,cat,r in zip(range(0,len(cats)),cats,cm):
-                # Generate errors
-                errs = []
-                for j in range(0,len(r)):
-                    if i != j and r[j] > 0:
-                        errs.append([r[j], cats[j]])
-                tmp.append([r[i]/sum(r),cat,r[i],sum(r),errs])
-            tmp = sorted(tmp, reverse=True)
-            # Show table
-            if "descriptions" not in session:
-                t = CustomizedTable(["Category", "Accuracy", "Correct", "n"], style={"row-toggle-background": 0})
-            else:
-                t = CustomizedTable(["Category", "Accuracy", "Correct", "n", "Description"], style={"row-toggle-background": 0})
-                t.column_style("Description", {"color": "#666"})
-            t.column_style(0, {"color": "#048512"})
-            t.column_style(1, {"color": "percent", "num-format": "pct-2"})
-            t.column_style([2,3], {"color": "value"})
-            if max_categories in [-1,0,None]:
-                max_categories = len(tmp)
-            for r in tmp[sidx:sidx+max_categories]:
-                cat = r[1]
-                if "label_encoder" in session:
-                    l = session["label_encoder"].inverse_transform([cat])[0]
-                    cat = f"{l} ({cat})"
-                row = [cat, float(r[0]), r[2], r[3]]
-                if "descriptions" in session:
-                    if r[1] in session["descriptions"]:
-                        row.append(session["descriptions"][r[1]])
-                    else:
-                        row.append("")
-                t.add_row(row, style={"border": "top", "background": "#eee"})
-                if len(r[4]) > 0:
-                    errs = sorted(r[4], reverse=True)
-                    if max_errors in [-1,0,None]:
-                        max_errors = len(errs)
-                    errs = errs[:max_errors]
-                    for err in errs:
-                        ecat = err[1]
-                        if "label_encoder" in session:
-                            l = session["label_encoder"].inverse_transform([ecat])[0]
-                            ecat = f"{l} ({ecat})"
-                        erow = [f"&nbsp;&nbsp;{ecat}", float(err[0]/r[2]), err[0], ""]
-                        if "descriptions" in session:
-                            if err[1] in session["descriptions"]:
-                                erow.append(session["descriptions"][err[1]])
-                            else:
-                                erow.append("")
-                        t.add_row(erow)
-                        if "descriptions" in session:
-                            t.cell_style(4,-1, {"color": "#666"})
-                        t.cell_style(0,-1, {"color": "#fd8e8a"})
-                        t.cell_style([1,2],-1, {"color": "#aaa4fa"})
-            print()
-            t.display()
+                cm_topn = confusion_matrix(session["y_actual"], session["y_pred_topn"])
+                l = f"(top {session['top_n']})"
+                t = generate_categories(session, cm, cats, max_categories, sidx, max_errors, label="&nbsp;"*len(l))
+                t_topn = generate_categories(session, cm_topn, cats, max_categories, sidx, max_errors, label=l)
+                print()
+                display_multiple_columns([t,t_topn])
 
         # Confusion matrix
         if confusionmatrix:
